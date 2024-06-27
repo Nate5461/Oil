@@ -69,7 +69,7 @@
                             <td>${row['Settlement Price']}</td>
                             <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
                             <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                            <td>${row.Spread}</td>
+                            <td class="${row.Spread < 0 ? 'red' : row.Spread > 0 ? 'green' : ''}">${row.Spread}</td>
                         `;
                         dataTable.appendChild(tr);
                     });

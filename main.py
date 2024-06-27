@@ -1,25 +1,26 @@
-import pyodbc
 import pandas as pd
+import sqlite3
 from flask import Flask, render_template, request, jsonify
+from flask_caching import Cache
 from flaskwebgui import FlaskUI
 from waitress import serve
 from threading import Thread
 
+
 app = Flask(__name__)
 
-database_path = r"C:\Users\TPI-P330\OneDrive\Documents\Oil\test.accdb"
+app.config['CACHE_TYPE'] = 'simple'
+cache = Cache(app)
 
-def connect_to_access(database_path):
-    conn_str = (
-        r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};'
-        r'DBQ=' + database_path + ';'
-    )
-    conn = pyodbc.connect(conn_str)
-    return conn
 
-def fetch_data(conn):
+db_path = 'oil_data.sqlite'
+
+@cache.cached(timeout=50)
+def fetch_data():
+    conn = sqlite3.connect(db_path)
     query = "SELECT * FROM mstrOil"  
     data = pd.read_sql(query, conn)
+    conn.close()
     return data
 
 @app.route('/')
@@ -30,8 +31,7 @@ def index():
 @app.route('/data', methods=['POST'])
 def get_data():
     selected_date = request.json['date']
-    connection = connect_to_access(database_path)
-    data = fetch_data(connection)
+    data = fetch_data()
     
     # Convert date columns to datetime
     data['CurrentDate'] = pd.to_datetime(data['CurrentDate']).dt.date
@@ -54,6 +54,7 @@ def get_data():
     filtered_data['Next Settlement Price'] = filtered_data['Settlement Price'].shift(1)
     filtered_data['Spread'] = (filtered_data['Settlement Price'] - filtered_data['Next Settlement Price']).fillna(0).round(2)
 
+    filtered_data['CloseDate'] = filtered_data['CloseDate'].astype(str)
     # Prepare response
     response_data = filtered_data[['CloseDate', 'Settlement Price', 'Change', 'percent_change', 'Spread']].to_dict(orient='records')
 
