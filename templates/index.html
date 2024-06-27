@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contract Settlement Prices Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { width: 1400px; margin: 0 auto; text-align: center; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; }
+        th { background-color: #f2f2f2; }
+        .red { background-color: #ffcccc; }
+        .green { background-color: #ccffcc; }
+        .date-selector { margin: 20px 0; }
+        .buttons { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Select a current date:</h2>
+        <input type="date" id="dateInput" class="date-selector">
+        <div class="buttons">
+            <button id="prevButton">&lt;</button>
+            <button id="nextButton">&gt;</button>
+        </div>
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th>Contract Month</th>
+                    <th>Settlement Price</th>
+                    <th>Change</th>
+                    <th>Percent (%)</th>
+                    <th>Spread</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Data rows will be inserted here dynamically -->
+            </tbody>
+        </table>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('dateInput');
+            const prevButton = document.getElementById('prevButton');
+            const nextButton = document.getElementById('nextButton');
+            const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
+
+            const minDate = '1993-06-25';
+            const maxDate = '2015-12-11';
+            dateInput.min = minDate;
+            dateInput.max = maxDate;
+
+            function fetchData(date) {
+                fetch('/data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ date: date }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    dataTable.innerHTML = '';
+                    data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${row.CloseDate}</td>
+                            <td>${row['Settlement Price']}</td>
+                            <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
+                            <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
+                            <td>${row.Spread}</td>
+                        `;
+                        dataTable.appendChild(tr);
+                    });
+                });
+            }
+
+            dateInput.addEventListener('change', function() {
+                fetchData(dateInput.value);
+            });
+
+            prevButton.addEventListener('click', function() {
+                const date = new Date(dateInput.value);
+                date.setDate(date.getDate() - 1);
+                if (date >= new Date(minDate)) {
+                    dateInput.value = date.toISOString().split('T')[0];
+                    fetchData(dateInput.value);
+                }
+            });
+
+            nextButton.addEventListener('click', function() {
+                const date = new Date(dateInput.value);
+                date.setDate(date.getDate() + 1);
+                if (date <= new Date(maxDate)) {
+                    dateInput.value = date.toISOString().split('T')[0];
+                    fetchData(dateInput.value);
+                }
+            });
+
+            // Set the date input to max date on load
+            dateInput.value = maxDate;
+            fetchData(maxDate);
+
+        });
+    </script>
+</body>
+</html>
