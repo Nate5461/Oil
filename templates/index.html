@@ -4,19 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contract Settlement Prices Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        .container { width: 1400px; margin: 0 auto; text-align: center; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 8px; }
-        th { background-color: #f2f2f2; }
-        .red { background-color: #ffcccc; }
-        .green { background-color: #ccffcc; }
-        .date-selector { margin: 20px 0; }
-        .buttons { margin: 10px 0; }
-    </style>
+    <link rel="stylesheet" href="static/styles.css">
+        
 </head>
 <body>
+
+    <nav class = "navigation">
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/bought">Bought</a></li>
+            <li><a href="/stats">Stats</a></li>
+        </ul>
+    </nav>
     <div class="container">
         <h2>Select a current date:</h2>
         <input type="date" id="dateInput" class="date-selector">
@@ -39,6 +38,8 @@
             </tbody>
         </table>
     </div>
+
+    
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const dateInput = document.getElementById('dateInput');
@@ -65,7 +66,7 @@
                     data.forEach(row => {
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
-                            <td>${row.CloseDate}</td>
+                            <td onclick="openModal('${row.CloseDate}')">${row.CloseDate}</td>
                             <td>${row['Settlement Price']}</td>
                             <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
                             <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
@@ -74,6 +75,11 @@
                         dataTable.appendChild(tr);
                     });
                 });
+            }
+            
+            function openModal(date) {
+                document.getElementById('modalDate').textContent = date;
+                document.getElementById('modal').style.display = 'block';
             }
 
             dateInput.addEventListener('change', function() {
@@ -98,11 +104,38 @@
                 }
             });
 
+            function buyContract(contractDate) {
+                fetch('/buy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ date: date }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                });
+            }
+
             // Set the date input to max date on load
             dateInput.value = maxDate;
             fetchData(maxDate);
 
         });
     </script>
+
+    <div id="modal" style="display: none; position: fixed; z-index: 1; left: 25%; top: 25%; width: 50%; height: 50%; overflow: auto; background-color: #111; background-color: rgba(1,1,1,0.4); padding-top: 50px;">
+        <div style="background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 40%;">
+            <h2>Contract Actions</h2>
+            <p>Contract Date: <span id="modalDate"> </span></p>
+            <button onclick="buyContract()">Buy</button>
+            <button onclick="limitBuy()">Limit Buy</button>
+            <button onclick="sellContract()">Sell</button>
+            <button onclick="limitSell()">Limit Sell</button>
+            <button onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
 </body>
 </html>

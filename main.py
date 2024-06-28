@@ -5,33 +5,49 @@ from flask_caching import Cache
 from flaskwebgui import FlaskUI
 from waitress import serve
 from threading import Thread
-
+import os
 
 app = Flask(__name__)
 
 app.config['CACHE_TYPE'] = 'simple'
 cache = Cache(app)
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(script_dir, 'oil_data.sqlite')
+template_dir = os.path.join(script_dir, 'templates')
 
-db_path = 'oil_data.sqlite'
+app.template_folder = template_dir
 
 @cache.cached(timeout=50)
-def fetch_data():
+def fetch_oil():
     conn = sqlite3.connect(db_path)
     query = "SELECT * FROM mstrOil"  
     data = pd.read_sql(query, conn)
     conn.close()
     return data
 
-@app.route('/')
+def fetch_bought():
+    conn = sqlite3.connect(db_path)
+    query = "SELECT * FROM transactions"  
+    data = pd.read_sql(query, conn)
+    conn.close()
+    return data
 
+def fetch_limits():
+    conn = sqlite3.connect(db_path)
+    query = "SELECT * FROM limit_orders"  
+    data = pd.read_sql(query, conn)
+    conn.close()
+    return data
+
+@app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/data', methods=['POST'])
 def get_data():
     selected_date = request.json['date']
-    data = fetch_data()
+    data = fetch_oil()
     
     # Convert date columns to datetime
     data['CurrentDate'] = pd.to_datetime(data['CurrentDate']).dt.date
@@ -60,6 +76,39 @@ def get_data():
 
     return jsonify(response_data)
 
+@app.route('/bought', methods=['GET'])
+def bought():
+    return render_template('bought.html')
+
+
+@app.route('/buy', methods=['GET'])
+def buy_contract():
+    pass
+
+@app.route('/boughtData', methods=['POST'])
+def bought_data():
+    selected_date = request.json['date']
+    data = fetch_bought()
+    
+    
+    # Convert date columns to datetime
+    data['PurchaseDate'] = pd.to_datetime(data['PurchaseDate']).dt.date
+    data['ContractDate'] = pd.to_datetime(data['ContractDate']).dt.date
+    
+    selected_current_date = pd.to_datetime(selected_date).date()
+
+    # Filter data
+    filtered_data = data[(data['PurchaseDate'] <= selected_current_date) & (data['ContractDate'] >= selected_current_date)]
+
+
+    # Prepare response
+    response_data = filtered_data[['ContractDate', 'TransactionType', 'Price', 'PurchaseDate']].to_dict(orient='records')
+
+    print(response_data)
+    return jsonify(response_data)
+
+
+
 def run_server():
     serve(app, host='0.0.0.0', port=8080)
 
@@ -68,5 +117,6 @@ if __name__ == '__main__':
     server_thread.daemon = True
     server_thread.start()
     
-    FlaskUI(app=app, server="flask").run()
+    app.run()
+    #FlaskUI(app=app, server="flask").run()
 
