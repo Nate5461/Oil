@@ -39,103 +39,48 @@
         </table>
     </div>
 
-    
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const dateInput = document.getElementById('dateInput');
-            const prevButton = document.getElementById('prevButton');
-            const nextButton = document.getElementById('nextButton');
-            const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
-
-            const minDate = '1993-06-25';
-            const maxDate = '2015-12-11';
-            dateInput.min = minDate;
-            dateInput.max = maxDate;
-
-            function fetchData(date) {
-                fetch('/data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ date: date }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    dataTable.innerHTML = '';
-                    data.forEach(row => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td onclick="openModal('${row.CloseDate}')">${row.CloseDate}</td>
-                            <td>${row['Settlement Price']}</td>
-                            <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
-                            <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                            <td class="${row.Spread < 0 ? 'red' : row.Spread > 0 ? 'green' : ''}">${row.Spread}</td>
-                        `;
-                        dataTable.appendChild(tr);
-                    });
-                });
-            }
-            
-            function openModal(date) {
-                document.getElementById('modalDate').textContent = date;
-                document.getElementById('modal').style.display = 'block';
-            }
-
-            dateInput.addEventListener('change', function() {
-                fetchData(dateInput.value);
-            });
-
-            prevButton.addEventListener('click', function() {
-                const date = new Date(dateInput.value);
-                date.setDate(date.getDate() - 1);
-                if (date >= new Date(minDate)) {
-                    dateInput.value = date.toISOString().split('T')[0];
-                    fetchData(dateInput.value);
-                }
-            });
-
-            nextButton.addEventListener('click', function() {
-                const date = new Date(dateInput.value);
-                date.setDate(date.getDate() + 1);
-                if (date <= new Date(maxDate)) {
-                    dateInput.value = date.toISOString().split('T')[0];
-                    fetchData(dateInput.value);
-                }
-            });
-
-            function buyContract(contractDate) {
-                fetch('/buy', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ date: date }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                });
-            }
-
-            // Set the date input to max date on load
-            dateInput.value = maxDate;
-            fetchData(maxDate);
-
-        });
-    </script>
-
-    <div id="modal" style="display: none; position: fixed; z-index: 1; left: 25%; top: 25%; width: 50%; height: 50%; overflow: auto; background-color: #111; background-color: rgba(1,1,1,0.4); padding-top: 50px;">
-        <div style="background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 40%;">
+    <div id="modal">
+        <div class="modal-content">
             <h2>Contract Actions</h2>
-            <p>Contract Date: <span id="modalDate"> </span></p>
-            <button onclick="buyContract()">Buy</button>
-            <button onclick="limitBuy()">Limit Buy</button>
-            <button onclick="sellContract()">Sell</button>
-            <button onclick="limitSell()">Limit Sell</button>
-            <button onclick="closeModal()">Close</button>
+            <p>Contract Date: <span id="mContractDate"></span><br>Price: <span id="mPrice"></span><br>Current Date: <span id="mCurrentDate"></span></p>
+            
+            <div class="modal-input-container">
+                <div class="modal-radio-container">
+                    <label class="radio">
+                        <input type="radio" id="buyRadio" name="contractAction" checked>
+                        <span>Buy</span>  
+                    </label>
+                    <label class="radio">
+                        <input type="radio" id="sellRadio" name="contractAction">
+                        <span>Sell</span>
+                    </label>
+                </div>
+                <div class="modal-input-container">
+                    <div class="modal-combo">  
+                        <input type="number" list="limitList" id="limitInput">
+                        <datalist id="limitList">
+                            
+                        </datalist>
+                    </div>
+                    <div class="modal-combo">
+                        <input list="valuesList" name="valueInput" id="valueInput" placeholder="Type or select a value">
+                        <datalist id="valuesList">
+                            <option value="Option 1">
+                            <option value="Option 2">
+                            <option value="Option 3">
+                            
+                        </datalist>
+                    </div>
+                    
+                </div>
+            </div>
+            <div class="modal-buttons-container">
+                <button class="modalButton" onclick="buyContract()">Submit</button>
+                <button class="modalButton" onclick="closeModal()">Close</button>
+            </div>
         </div>
     </div>
 
+    <script src="static/scripts.js"></script>
 </body>
 </html>

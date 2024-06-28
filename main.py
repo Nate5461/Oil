@@ -80,11 +80,26 @@ def get_data():
 def bought():
     return render_template('bought.html')
 
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#      NEED TO CHANGE BUY TO INCLUDE STANDARD BUY, LIMIT BUY, SPREAD AND CONTRACT
+#      DATA NEEDED: got it in a table
 
-@app.route('/buy', methods=['GET'])
+
+
+@app.route('/buy', methods=['POST'])
 def buy_contract():
-    pass
+    try:
+        data = request.json
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
 
+        cursor.execute("INSERT INTO transactions (ContractDate, TransactionType, Price, PurchaseDate) VALUES (?, ?, ?, ?)", 
+                       (data['contractDate'], data['type'], data['price'], data['currentDate']))
+        conn.commit()  
+        return jsonify({"message": "Purchase successful"}), 200 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500  
+    
 @app.route('/boughtData', methods=['POST'])
 def bought_data():
     selected_date = request.json['date']
