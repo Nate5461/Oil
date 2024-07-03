@@ -45,6 +45,45 @@ th {
     margin: 10px 0;
 }
 
+h2 {
+    text-align: center;
+}
+
+.p1_centered {
+    text-align: center;
+}
+
+.contract-date {
+    margin-right: 20px;
+}
+
+.modal_prices {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    text-align: center;
+    align-items: center;
+}
+
+.modal_combo{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#qtyInput {
+  width: 50px;
+}
+
+#limitInput {
+  width: 70px;
+}
+
+.modal_input_container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
 
 .modalButton {
   align-items: center;

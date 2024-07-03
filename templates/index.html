@@ -42,7 +42,35 @@
     <div id="modal">
         <div class="modal-content">
             <h2>Contract Actions</h2>
-            <p>Contract Date: <span id="mContractDate"></span><br>Price: <span id="mPrice"></span><br>Current Date: <span id="mCurrentDate"></span></p>
+            <div class="p1_centered">
+                <p id="p1">Contract Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
+            </div>
+            <div class="modal_prices">
+                <p id="p2">Price: <span id="mPrice"></span></p>
+                <div class="modal-combo">  
+                    <label for="limitInput">Limit Price:</label>
+                    <input type="number" list="limitList" id="limitInput">
+                    <datalist id="limitList">
+                        
+                    </datalist>
+                </div>
+                <div class="modal-combo">
+                    <label for="qtyInput">Quantity:</label>
+                    <input type="number" list="qtyList" name="qtyList" id="qtyInput">
+                    <datalist id="qtyList">
+                        <option value=1>
+                        <option value=2>
+                        <option value=3>
+                        <option value=4>
+                        <option value=5>
+                        <option value=6>
+                        <option value=7>
+                        <option value=8>
+                        <option value=9>
+                        <option value=10>
+                    </datalist>
+                </div>
+            </div>
             
             <div class="modal-input-container">
                 <div class="modal-radio-container">
@@ -55,24 +83,7 @@
                         <span>Sell</span>
                     </label>
                 </div>
-                <div class="modal-input-container">
-                    <div class="modal-combo">  
-                        <input type="number" list="limitList" id="limitInput">
-                        <datalist id="limitList">
-                            
-                        </datalist>
-                    </div>
-                    <div class="modal-combo">
-                        <input list="valuesList" name="valueInput" id="valueInput" placeholder="Type or select a value">
-                        <datalist id="valuesList">
-                            <option value="Option 1">
-                            <option value="Option 2">
-                            <option value="Option 3">
-                            
-                        </datalist>
-                    </div>
                     
-                </div>
             </div>
             <div class="modal-buttons-container">
                 <button class="modalButton" onclick="buyContract()">Submit</button>

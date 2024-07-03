@@ -86,19 +86,33 @@ def bought():
 
 
 
-@app.route('/buy', methods=['POST'])
+@app.route('/buyContract', methods=['POST'])
 def buy_contract():
     try:
         data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        cursor.execute("INSERT INTO transactions (ContractDate, TransactionType, Price, PurchaseDate) VALUES (?, ?, ?, ?)", 
-                       (data['contractDate'], data['type'], data['price'], data['currentDate']))
+        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, PurchaseDate, type) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                       (data['currentDate'], data['contractDate'], data['qty'], data['price'], data['status'], data['PurchaseDate'], data['type']))
         conn.commit()  
         return jsonify({"message": "Purchase successful"}), 200 
     except Exception as e:
         return jsonify({"error": str(e)}), 500  
+    
+@app.route('/buySpread', methods=['POST'])
+def buy_spread():
+    try:
+        data = request.json
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("INSERT INTO spreadTransactions (transaction_date, qty, frontMonth, backMonth, type, limit_price, status, purchase_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                       (data['currentDate'], data['qty'], data['frontMonth'], data['backMonth'], data['type'], data['price'], data['status'], data['purchaseDate']))
+        conn.commit()  
+        return jsonify({"message": "Purchase successful"}), 200 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
 @app.route('/boughtData', methods=['POST'])
 def bought_data():
