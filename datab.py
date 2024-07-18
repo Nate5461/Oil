@@ -5,7 +5,11 @@ def create_tables():
     c = conn.cursor()
     
     #c.execute('''CREATE TABLE IF NOT EXISTS spreadTransactions (transaction_id INTEGER PRIMARY KEY, transaction_date TEXT, qty INTEGER, frontMonth TEXT, backMonth TEXT, type TEXT, limit_price REAL, status TEXT, purchase_date TEXT)''')
-    c.execute('''ALTER TABLE Transactions DROP COLUMN price;''')
+    #c.execute('''DELETE FROM Transactions;''')
+    #c.execute('''INSERT INTO wallet (amount) VALUES (10000);''')
+    c.execute('''ALTER TABLE wallet ADD COLUMN maintenance REAL;''')
+    c.execute('''ALTER TABLE wallet ADD COLUMN unrealized REAL;''')
+    c.execute('''ALTER TABLE wallet ADD COLUMN netLiquid REAL;''')
     conn.commit()
     conn.close()
 

@@ -2,6 +2,12 @@ body {
     font-family: Arial, sans-serif;
 }
 
+html, body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
 .container {
     width: 1400px;
     margin: 0 auto; 
@@ -35,6 +41,25 @@ th {
 
 }
 
+.spreadRed {
+  background-color: #ffcccc;
+}
+
+.spreadRed:hover {
+  background-color: #ebbbbb;
+  outline: auto;
+  outline-color: blueviolet;
+}
+
+.spreadGreen {
+  background-color: #ccffcc;
+}
+
+.spreadGreen:hover {
+  background-color: #b3ebb3;
+  outline: auto;
+  outline-color: blueviolet;
+}
 
 
 .date-selector {
@@ -71,6 +96,11 @@ h2 {
   gap: 10px;
 }
 
+.modal_content{
+  display: flex;
+  justify-content: center;
+
+}
 #qtyInput {
   width: 50px;
 }
@@ -84,6 +114,7 @@ h2 {
     justify-content: center;
     gap: 10px;
 }
+
 
 .modalButton {
   align-items: center;
@@ -187,67 +218,143 @@ h2 {
     margin-top: auto;
     gap: 20px;
 }
+.modal-radio-container {
+  display: flex;
+  flex-direction: column; /* Stack children vertically */
+  justify-content: center; /* Vertically center the content */
+  align-items: center; /* Horizontally center the radio buttons */
+}
 
-.radio{
-    display: block;
+.radio {
     cursor: pointer; 
-    user-select:none;
-    text-align: left;
-    &+.radio{
-      margin-top: 12px;
-    }
-    input{
-      display: none;
-      &+span{
-        display: inline-block; 
-        position: relative;
-        padding-left: 30px;
-        &:before{
-          content: '';
-          display: block; 
-          position: absolute;
-          top: 0px;
-          left: 0px;
-          border-radius: 50%;
-          margin-right: 5px;
-          width: 16px;
-          height: 16px;
-          border: 1px solid #ccc;
-          background: #fff;
-        }
-        &:after{
-          content: '';
-          display: block; 
-          width: 10px;
-          height: 10px;
-          background: #222;
-          position: absolute;
-          border-radius: 50%;
-          top: 4px;
-          left: 4px;
-          opacity: 0;
-          transform: scale(0,0); 
-          transition: all .2s cubic-bezier(0.64, 0.57, 0.67, 1.53);
-        }
-      }
-      &:checked+span:after{
-        opacity: 1;
-        transform: scale(1,1);
-      }
-    }
-  }
+    user-select: none;
+    /* Removed text-align: center; */
+}
+
+.radio + .radio {
+  margin-top: 12px; /* Apply margin between radio buttons */
+}
+
+.radio input {
+  display: none;
+}
+
+.radio input + span {
+  display: inline-block; 
+  position: relative;
+  padding-left: 30px;
+  /* Add a max-width or specific width if needed */
+  /* max-width: 200px; */ /* Example: Limit the clickable area */
+}
+
+.radio input + span:before, .radio input + span:after {
+  content: '';
+  display: block; 
+  position: absolute;
+  border-radius: 50%;
+}
+
+.radio input + span:before {
+  top: 0px;
+  left: 0px;
+  margin-right: 5px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+
+.radio input + span:after {
+  width: 10px;
+  height: 10px;
+  background: #222;
+  top: 4px;
+  left: 4px;
+  opacity: 0;
+  transform: scale(0,0); 
+  transition: all .2s cubic-bezier(0.64, 0.57, 0.67, 1.53);
+}
+
+.radio input:checked + span:after {
+  opacity: 1;
+  transform: scale(1,1);
+}
+
+.navigation{
+  width: 100%;
+}
 
 .navigation ul {
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background-color: #333;
+  display: flex;
+  justify-content: space-between; /* Adjust this to space-between */
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #36454F;
 }
 
-.navigation li {
-    float: left;
+.nav-links, .right-container {
+  display: flex;
 }
+
+.wallet-container .wallet_number {
+  color: yellow;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  position: relative;
+}
+
+.right-container li:hover {
+  background-color: #111;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+  flex-direction: column;
+
+}
+
+.dropdown-menu > * {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dropdown-menu .dropbtn{
+  background-color: #ffffff;
+  color: rgb(0, 79, 153);
+  padding: 16px;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dropdown-menu .dropbtn:hover {
+  background-color: #f1f1f1;
+}
+
+.wallet-container:hover .dropdown-menu {
+  display: block;
+}
+
+.right-container li {
+  display: block;
+  color: rgb(252, 93, 93);
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  font-size: 20px;
+}
+
 
 .navigation li a {
     display: block;
@@ -255,8 +362,10 @@ h2 {
     text-align: center;
     padding: 14px 16px;
     text-decoration: none;
+    font-size: 20px;
 }
 
 .navigation li a:hover {
     background-color: #111;
 }
+

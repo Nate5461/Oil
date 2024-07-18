@@ -6,6 +6,7 @@ from flaskwebgui import FlaskUI
 from waitress import serve
 from threading import Thread
 import os
+import numpy as np
 
 app = Flask(__name__)
 
@@ -26,6 +27,21 @@ def fetch_oil():
     conn.close()
     return data
 
+@app.context_processor
+def inject_wallet_number():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT amount FROM wallet")
+
+    wallet = cursor.fetchone()[0]
+    conn.close()
+    return dict(wallet_number=wallet)
+
+@app.route('/getWallet', methods=['GET'])
+def get_wallet_number():
+    wallet_info = inject_wallet_number()  # This uses the existing context processor to get the wallet number
+    return jsonify(wallet_info)
+
 def fetch_bought():
     conn = sqlite3.connect(db_path)
     query = "SELECT * FROM transactions"  
@@ -43,6 +59,42 @@ def fetch_limits():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/withdraw', methods=['POST'])
+def withdraw():
+    try:
+        data = request.json
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE wallet SET amount = amount - ?", (data['amount'],))
+        conn.commit()
+        return jsonify({"message": "Withdrawal successful"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/deposit', methods=['POST'])
+def deposit():
+    try:
+        data = request.json
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE wallet SET amount = amount + ?", (data['amount'],))
+        conn.commit()
+        return jsonify({"message": "Deposit successful"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE wallet SET amount = 0.0")
+        cursor.execute("DELETE FROM transactions")
+        conn.commit()
+        return jsonify({"message": "Restart successful"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/data', methods=['POST'])
 def get_data():
@@ -80,25 +132,38 @@ def get_data():
 def bought():
     return render_template('bought.html')
 
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-#      NEED TO CHANGE BUY TO INCLUDE STANDARD BUY, LIMIT BUY, SPREAD AND CONTRACT
-#      DATA NEEDED: got it in a table
-
 
 
 @app.route('/buyContract', methods=['POST'])
 def buy_contract():
+    print("buyContract")
     try:
         data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, PurchaseDate, type) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                       (data['currentDate'], data['contractDate'], data['qty'], data['price'], data['status'], data['PurchaseDate'], data['type']))
+        mstrOil = fetch_oil()
+
+        price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
+
+
+        print("price", price)
+
+        if float(data['limitPrice']) == float(price):
+            purchase_date = data['transactionDate']
+            status = 'Purchased'
+        else:
+            purchase_date = None
+            status = 'Pending'
+
+        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                       (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type']))
         conn.commit()  
-        return jsonify({"message": "Purchase successful"}), 200 
+
+        return jsonify({"message": "Transaction sent"}), 200 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500  
+        return jsonify({"message": str(e)}), 500  
+    
     
 @app.route('/buySpread', methods=['POST'])
 def buy_spread():
@@ -118,20 +183,41 @@ def buy_spread():
 def bought_data():
     selected_date = request.json['date']
     data = fetch_bought()
-    
+    mstrOil = fetch_oil()
     
     # Convert date columns to datetime
-    data['PurchaseDate'] = pd.to_datetime(data['PurchaseDate']).dt.date
-    data['ContractDate'] = pd.to_datetime(data['ContractDate']).dt.date
-    
+    data['contract_date'] = pd.to_datetime(data['contract_date']).dt.date
+    data['purchase_date'] = pd.to_datetime(data['purchase_date']).dt.date.astype(str)
+    data['contract_date'] = pd.to_datetime(data['contract_date']).dt.date
+    data['trans_date'] = pd.to_datetime(data['trans_date']).dt.date
     selected_current_date = pd.to_datetime(selected_date).date()
 
-    # Filter data
-    filtered_data = data[(data['PurchaseDate'] <= selected_current_date) & (data['ContractDate'] >= selected_current_date)]
 
+    mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate']).dt.date
+    mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate']).dt.date
+
+    for index, row in data.iterrows():
+        # Debugging prints
+        row['contract_date'] = pd.to_datetime(row['contract_date']).date()
+
+        filtered_mstrOil = mstrOil[(mstrOil['CurrentDate'] == selected_current_date)  & (mstrOil['CloseDate'] == row['contract_date'])]
+        
+        if not filtered_mstrOil.empty:
+            data.at[index, 'settle_price'] = filtered_mstrOil['Settlement Price'].values[0]
+        else:
+            data.at[index, 'settle_price'] = 0
+
+    
+    
+    data['change'] = (data['settle_price'] - data['limit_price']).round(2)
+    data['percent_change'] = (data['change'] / data['limit_price'] * 100).round(2)
+
+    # Filter data
+    filtered_data = data[(data['trans_date'] <= selected_current_date) & (data['contract_date'] >= selected_current_date)]
+    filtered_data['contract_date'] = filtered_data['contract_date'].astype(str)
 
     # Prepare response
-    response_data = filtered_data[['ContractDate', 'TransactionType', 'Price', 'PurchaseDate']].to_dict(orient='records')
+    response_data = filtered_data[['contract_date', 'settle_price', 'type', 'limit_price', 'purchase_date', 'status', 'change', 'percent_change']].to_dict(orient='records')
 
     print(response_data)
     return jsonify(response_data)

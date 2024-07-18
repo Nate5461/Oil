@@ -9,13 +9,27 @@
 </head>
 <body>
 
+    <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
     <nav class = "navigation">
         <ul>
-            <li><a href="/">Home</a></li>
-            <li><a href="/bought">Bought</a></li>
-            <li><a href="/stats">Stats</a></li>
+            <div class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/bought">Bought</a></li>
+                <li><a href="/stats">Stats</a></li>
+            </div>
+            <div class="right-container">
+                <div class="wallet-container">
+                    <li><span class="wallet_number"> {{ wallet_number }} </span></li>
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=depositFunds()>Deposit</button>
+                        <button class="dropbtn"onclick=withdrawFunds()>Withdraw</button>
+                    </div>
+                </div>
+                <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+            </div>
         </ul>
     </nav>
+    
     <div class="container">
         <h2>Select a current date:</h2>
         <input type="date" id="dateInput" class="date-selector">
@@ -44,6 +58,59 @@
             <h2>Contract Actions</h2>
             <div class="p1_centered">
                 <p id="p1">Contract Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
+            </div>
+            <div class="modal_prices">
+                <p id="p2">Price: <span id="mPrice"></span></p>
+                <div class="modal-combo">  
+                    <label for="limitInput">Limit Price:</label>
+                    <input type="number" list="limitList" id="limitInput">
+                    <datalist id="limitList">
+                        
+                    </datalist>
+                </div>
+                <div class="modal-combo">
+                    <label for="qtyInput">Quantity:</label>
+                    <input type="number" list="qtyList" name="qtyList" id="qtyInput">
+                    <datalist id="qtyList">
+                        <option value=1>
+                        <option value=2>
+                        <option value=3>
+                        <option value=4>
+                        <option value=5>
+                        <option value=6>
+                        <option value=7>
+                        <option value=8>
+                        <option value=9>
+                        <option value=10>
+                    </datalist>
+                </div>
+            </div>
+            
+            <div class="modal-input-container">
+                <div class="modal-radio-container">
+                    <label class="radio">
+                        <input type="radio" id="buyRadio" name="contractAction" checked>
+                        <span>Buy</span>  
+                    </label>
+                    <label class="radio">
+                        <input type="radio" id="sellRadio" name="contractAction">
+                        <span>Sell</span>
+                    </label>
+                </div>
+                    
+            </div>
+            <div class="modal-buttons-container">
+                <button class="modalButton" onclick="buyContract()">Submit</button>
+                <button class="modalButton" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-spread">
+        <div class="modal-spread-content">
+            <h2>Contract Actions</h2>
+            <div class="p1_centered">
+                <p id="p1">Spread Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
             </div>
             <div class="modal_prices">
                 <p id="p2">Price: <span id="mPrice"></span></p>

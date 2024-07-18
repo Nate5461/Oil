@@ -9,14 +9,28 @@
 </head>
 
 <body>
+    <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
 
     <nav class = "navigation">
         <ul>
-            <li><a href="/">Home</a></li>
-            <li><a href="/bought">Bought</a></li>
-            <li><a href="/stats">Stats</a></li>
+            <div class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/bought">Bought</a></li>
+                <li><a href="/stats">Stats</a></li>
+            </div>
+            <div class="right-container">
+                <div class="wallet-container">
+                    <li><span class="wallet_number"> {{ wallet_number }} </span></li>
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=depositFunds()>Deposit</button>
+                        <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
+                    </div>
+                </div>
+                <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+            </div>
         </ul>
     </nav>
+    
     <div class="container">
         <h2>Select a current date:</h2>
         <input type="date" id="dateInput" class="date-selector">
@@ -28,10 +42,12 @@
             <thead>
                 <tr>
                     <th>Contract Month</th>
-                    <th>Settlement Price</th>
+                    <th>Purchase Price</th>
+                    <th>Current Price</th>
                     <th>Change</th>
                     <th>Percent (%)</th>
-                    <th>Spread</th>
+                    <th>Status</th>
+                    <th>Purchase Date</th>
                 </tr>
             </thead>
             <tbody>
