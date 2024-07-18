@@ -37,10 +37,39 @@ def inject_wallet_number():
     conn.close()
     return dict(wallet_number=wallet)
 
+@app.context_processor
+def inject_unrealized():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT unrealized FROM wallet")
+    unrealized = cursor.fetchone()[0]
+    conn.close()
+    return dict(unrealized=unrealized)
+
+@app.context_processor
+def inject_netLiquid():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT netLiquid FROM wallet")
+    netLiquid = cursor.fetchone()[0]
+    conn.close()
+    return dict(netLiquid=netLiquid)
+
+
 @app.route('/getWallet', methods=['GET'])
 def get_wallet_number():
-    wallet_info = inject_wallet_number()  # This uses the existing context processor to get the wallet number
-    return jsonify(wallet_info)
+    wallet_info = inject_wallet_number()
+    unrealized = inject_unrealized()
+    netLiquid = inject_netLiquid()
+
+    response = {
+        'wallet_info': wallet_info,
+        'unrealized_info': unrealized,
+        'netLiquid_info': netLiquid
+    }
+
+    return jsonify(response)
+
 
 def fetch_bought():
     conn = sqlite3.connect(db_path)
@@ -144,27 +173,38 @@ def buy_contract():
 
         mstrOil = fetch_oil()
 
+        # Assuming data and mstrOil are defined somewhere above this code
+        data['contractDate'] = pd.to_datetime(data['contractDate']).date()
+        data['transactionDate'] = pd.to_datetime(data['transactionDate']).date()
+        
+        # Ensure the mstrOil DataFrame columns are in the correct format
+        mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate']).dt.date
+        mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate']).dt.date
+
         price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
 
 
-        print("price", price)
-
+        #THis will never happen for spreads currently
         if float(data['limitPrice']) == float(price):
             purchase_date = data['transactionDate']
             status = 'Purchased'
+            purchase_price = price
         else:
             purchase_date = None
             status = 'Pending'
+            purchase_price = None
 
-        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                       (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type']))
+        
+
+        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type, purchase_price, trans_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                       (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type'], purchase_price, data['trans_price']))
         conn.commit()  
 
         return jsonify({"message": "Transaction sent"}), 200 
     except Exception as e:
         return jsonify({"message": str(e)}), 500  
     
-    
+
 @app.route('/buySpread', methods=['POST'])
 def buy_spread():
     try:

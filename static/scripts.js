@@ -9,6 +9,90 @@ function closeModal() {
     }
 }
 
+function closeSpreadModal() {
+    const modal = document.getElementById('modal-spread');
+    if (modal) {
+        modal.style.display = 'none';
+    } else {
+        console.error('Modal element not found');
+    }
+}
+
+function buySpread() {
+
+    var contractDate = document.getElementById('sContractDate').dataset.contractDate;
+    var contractDate1 = document.getElementById('sContractDate').dataset.contractDate1;
+
+    var price1 = document.getElementById('sPrice').dataset.price1;
+    var price2 = document.getElementById('sPrice').dataset.price2;
+
+    var spreadPrice = document.getElementById('sPrice').textContent;
+    var currentDate = document.getElementById('sCurrentDate').textContent;
+    var qty = document.getElementById('sqtyInput').value;
+    var limitPrice = document.getElementById('slimitInput').value;
+
+    if (document.getElementById('sbuyRadio').checked) {
+        var type1 = 'sell';
+        var type2 = 'buy';
+    } else {
+        var type1 = 'sell';
+        var type2 = 'buy';
+    }
+
+
+    console.log(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, qty, limitPrice, type1, type2);
+
+    
+    // First fetch with contractDate
+    fetch('/buyContract', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            transactionDate: currentDate,
+            contractDate: contractDate,
+            qty: qty,
+            limitPrice: limitPrice,
+            status: 'pending',
+            purchaseDate: null,
+            type: type1,
+            trans_price: price1
+        }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log('First fetch response:', data);
+
+            // Second fetch with contractDate1
+            return fetch('/buyContract', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    transactionDate: currentDate,
+                    contractDate: contractDate1,
+                    qty: qty,
+                    limitPrice: limitPrice,
+                    status: 'pending',
+                    purchaseDate: null,
+                    type: type2,
+                    trans_price: price2
+                }),
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Second fetch response:', data);
+            alert(data.message);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while processing the request.');
+        });
+}
+
 function buyContract() {
 
     var contractDate = document.getElementById('mContractDate').textContent;
@@ -22,29 +106,30 @@ function buyContract() {
     } else {
         var type = 'sell';
     }
-    
+
 
     console.log(contractDate, price, currentDate, qty, limitPrice, type);
-    
+
     fetch('/buyContract', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
             transactionDate: currentDate,
             contractDate: contractDate,
             qty: qty,
             limitPrice: limitPrice,
             status: 'pending',
             purchaseDate: null,
-            type: type
+            type: type,
+            trans_price: price
         }),
     })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message);
-    });
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        });
 }
 
 function sellContract() {
@@ -58,17 +143,17 @@ function sellContract() {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
             contractDate: contractDate,
             type: 'sell',
             price: price,
             currentDate: currentDate
         }),
     })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message);
-    });
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        });
 }
 
 
@@ -87,26 +172,86 @@ function openModal(contractDate, price, currentDate) {
     modal.style.display = 'block';
 }
 
+function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
+    console.log("vals", contractDate, spreadPrice, currentDate);
+
+    const modal = document.getElementById('modal-spread');
+    const mCloseDate = document.getElementById('sContractDate');
+    const mCurrDate = document.getElementById('sCurrentDate');
+    const mPrice = document.getElementById('sPrice');
+
+    // Check if elements are correctly selected
+    if (!mCloseDate || !mCurrDate || !mPrice) {
+        console.error("One or more elements not found:", { mCloseDate, mCurrDate, mPrice });
+        return;
+    }
+
+    let month1 = contractDate.split(' ')[0];
+    let month2 = contractDate1.split(' ')[0];
+    let year = contractDate1.split(' ')[1];
+
+    mCloseDate.dataset.contractDate = contractDate;
+    mCloseDate.dataset.contractDate1 = contractDate1;
+
+    mPrice.dataset.price1 = price1;
+    mPrice.dataset.price2 = price2;
+
+
+    mCloseDate.textContent = month1 + '/' + month2 + ' ' + year;
+    mCurrDate.textContent = currentDate;
+    mPrice.textContent = spreadPrice;
+
+    // Log the values to ensure they are set
+    console.log("Set values:", {
+        mCloseDate: mCloseDate.textContent,
+        mCurrDate: mCurrDate.textContent,
+        mPrice: mPrice.textContent
+    });
+
+    updateOptionsSpreadContract();
+    modal.style.display = 'block';
+}
+
+
 function updateWalletNumber() {
-    fetch ('/getWallet')
+    fetch('/getWallet')
         .then(response => response.json())
         .then(data => {
             const walletNumberElement = document.getElementById('walletInfo');
             const walletNumberSpan = document.querySelector('.wallet_number');
-            if (walletNumberElement) {
-                walletNumberElement.dataset.walletNumber = data.wallet_number.toFixed(2);
+            const netLiquid = document.getElementById('walletNetliquid');
+            const netLiquidSpan = document.querySelector('.dropLabelNet');
+            const unrealized = document.getElementById('walletUnrealized');
+            const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
+
+            if (netLiquid && data.netLiquid_info !== undefined) {
+                netLiquid.dataset.netLiquid = data.netLiquid_info.toFixed(2);
             }
-            if (walletNumberSpan) {
-                walletNumberSpan.textContent = data.wallet_number.toFixed(2);
+            if (netLiquidSpan && data.netLiquid_info !== undefined) {
+                netLiquidSpan.textContent = data.netLiquid_info.toFixed(2);
+            }
+            if (unrealized && data.unrealized_info !== undefined) {
+                unrealized.dataset.unrealized = data.unrealized_info.toFixed(2);
+            }
+            if (unrealizedSpan && data.unrealized_info !== undefined) {
+                unrealizedSpan.textContent = data.unrealized_info.toFixed(2);
+            }
+            if (walletNumberElement && data.wallet_info !== undefined) {
+                walletNumberElement.dataset.walletNumber = data.wallet_info.toFixed(2);
+            }
+            if (walletNumberSpan && data.wallet_info !== undefined) {
+                walletNumberSpan.textContent = data.wallet_info.toFixed(2);
             }
         })
         .catch(error => console.error('Error fetching wallet number:', error));
 }
 
+
+
 // Also update on page load
 updateWalletNumber();
 
-function withdrawFunds(){
+function withdrawFunds() {
     const amount = parseFloat(prompt('Enter the amount you want to deposit:'));
     const wallet_number = parseFloat(document.getElementById('walletInfo').dataset.walletNumber);
 
@@ -120,15 +265,15 @@ function withdrawFunds(){
             },
             body: JSON.stringify({ amount: amount }),
         })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-            updateWalletNumber();
-        });
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.message);
+                updateWalletNumber();
+            });
     }
-} 
+}
 
-function depositFunds(){
+function depositFunds() {
     const amount = prompt('Enter the amount you want to deposit:');
 
     if (amount !== null) {
@@ -139,11 +284,11 @@ function depositFunds(){
             },
             body: JSON.stringify({ amount: amount }),
         })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-            updateWalletNumber();
-        });
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.message);
+                updateWalletNumber();
+            });
     }
 }
 
@@ -156,19 +301,19 @@ function restart() {
                 'Content-Type': 'application/json',
             },
         })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-            updateWalletNumber();
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.message);
+                updateWalletNumber();
 
-            const currentPath = window.location.pathname;
+                const currentPath = window.location.pathname;
 
-            if (currentPath.includes('/bought')) {
-                const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0]
-                dataTable.innerHTML = '';
-            }
-            
-        });
+                if (currentPath.includes('/bought')) {
+                    const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0]
+                    dataTable.innerHTML = '';
+                }
+
+            });
     }
 }
 
@@ -178,10 +323,10 @@ function updateOptionsForContract() {
     const valuesList = document.getElementById('limitList');
     //const inputField = document.getElementById('limitInput');
 
-    
+
     // Clear existing options
     valuesList.innerHTML = '';
-    
+
     // Generate and add new options
     for (let i = -10; i <= 10; i++) {
         const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
@@ -193,7 +338,27 @@ function updateOptionsForContract() {
 
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function updateOptionsSpreadContract() {
+    const settlePrice = parseFloat(document.getElementById('sPrice').textContent);
+    const valuesList = document.getElementById('limitList');
+    //const inputField = document.getElementById('limitInput');
+
+
+    // Clear existing options
+    valuesList.innerHTML = '';
+
+    // Generate and add new options
+    for (let i = -10; i <= 10; i++) {
+        const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
+        const optionElement = document.createElement('option');
+        optionElement.value = optionValue;
+        console.log(optionValue);
+        valuesList.appendChild(optionElement);
+    }
+
+}
+
+document.addEventListener('DOMContentLoaded', function () {
     updateMain();
 });
 
@@ -219,21 +384,28 @@ function updateMain() {
             },
             body: JSON.stringify({ date: date }),
         })
-        .then(response => response.json())
-        .then(data => {
-            dataTable.innerHTML = '';
-            data.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.innerHTML =` 
-                    <td class="contractBox">${row.CloseDate}</td>
+            .then(response => response.json())
+            .then(data => {
+                dataTable.innerHTML = '';
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+
+                    const closeDate = new Date(row.CloseDate);
+
+                    // Format the date to "Month/Year"
+                    const options = { year: 'numeric', month: 'long' };
+                    const formattedDate = closeDate.toLocaleDateString('en-US', options);
+
+                    tr.innerHTML = ` 
+                    <td class="contractBox">${formattedDate}</td>
                     <td>${row['Settlement Price']}</td>
                     <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
                     <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
                     <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${row.Spread}</td>
                 `;
-                dataTable.appendChild(tr);
+                    dataTable.appendChild(tr);
+                });
             });
-        });
     }
 
     function fetchBought(date) {
@@ -261,13 +433,13 @@ function updateMain() {
                 });
             });
     }
-    
 
-    dateInput.addEventListener('change', function() {
+
+    dateInput.addEventListener('change', function () {
         fetchData(dateInput.value);
     });
 
-    prevButton.addEventListener('click', function() {
+    prevButton.addEventListener('click', function () {
         const date = new Date(dateInput.value);
         date.setDate(date.getDate() - 1);
         if (date >= new Date(minDate)) {
@@ -276,7 +448,7 @@ function updateMain() {
         }
     });
 
-    nextButton.addEventListener('click', function() {
+    nextButton.addEventListener('click', function () {
         const date = new Date(dateInput.value);
         date.setDate(date.getDate() + 1);
         if (date <= new Date(maxDate)) {
@@ -285,12 +457,63 @@ function updateMain() {
         }
     });
 
-    document.getElementById('dataTable').addEventListener('click', function(event) {
+    document.getElementById('dataTable').addEventListener('click', function (event) {
         if (event.target && event.target.classList.contains('contractBox')) {
             openModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
         }
     });
-    
+
+    document.getElementById('dataTable').addEventListener('click', function (event) {
+        console.log("Click");
+        if (event.target.classList.contains('spread') || event.target.classList.contains('spreadRed') || event.target.classList.contains('spreadGreen')) {
+
+            // Get the current element
+            let currentElement = event.target;
+
+            // Traverse to the element four columns to the left
+            let targetElement = currentElement;
+            for (let i = 0; i < 4; i++) {
+                if (targetElement.previousElementSibling) {
+                    targetElement = targetElement.previousElementSibling;
+                } else {
+                    console.error('Not enough columns to the left');
+                    return;
+                }
+            }
+            
+            let monthPrice1 = targetElement.nextElementSibling.textContent;
+        
+            // Get the parent row of the target element
+            let parentRow = targetElement.parentElement;
+            if (!parentRow) {
+                console.error('Parent row not found');
+                return;
+            }
+
+            // Get the previous sibling row
+            let previousRow = parentRow.previousElementSibling;
+            if (!previousRow) {
+                console.error('Previous row not found');
+                return;
+            }
+
+            // Get the corresponding cell in the previous row
+            let targetElement1 = previousRow.children[targetElement.cellIndex];
+            if (!targetElement1) {
+                console.error('Corresponding cell not found in the previous row');
+                return;
+            }
+
+            let monthPrice2 = targetElement1.nextElementSibling.textContent;
+
+            console.log("MonthPrice1", monthPrice1);   
+            console.log("MonthPrice2", monthPrice2);
+            openSpreadModal(targetElement1.textContent, targetElement.textContent, monthPrice1, monthPrice2, event.target.textContent, dateInput.value);
+        }
+    });
+
+
+
     // Set the date input to max date on load
     dateInput.value = maxDate;
     fetchDataFunction(maxDate);

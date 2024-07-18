@@ -10,6 +10,9 @@
 <body>
 
     <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
+    <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
+    <div id="walletNetliquid" data-wallet-netLiquid="{{ netLiquid }}"></div>
+
     <nav class = "navigation">
         <ul>
             <div class="nav-links">
@@ -21,6 +24,8 @@
                 <div class="wallet-container">
                     <li><span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
+                        <li><span class="dropLabelNet"> {{ netLiquid }} </span></li>
+                        <li><span class="dropLabelUnrealized"> {{ unrealized }} </span></li>
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn"onclick=withdrawFunds()>Withdraw</button>
                     </div>
@@ -107,23 +112,23 @@
     </div>
 
     <div id="modal-spread">
-        <div class="modal-spread-content">
+        <div class="modal-content">
             <h2>Contract Actions</h2>
             <div class="p1_centered">
-                <p id="p1">Spread Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
+                <p id="p1">Spread Date: <span class="contract-date" id="sContractDate"></span> Current Date: <span id="sCurrentDate"></span></p>
             </div>
             <div class="modal_prices">
-                <p id="p2">Price: <span id="mPrice"></span></p>
+                <p id="p2">Price: <span id="sPrice"></span></p>
                 <div class="modal-combo">  
                     <label for="limitInput">Limit Price:</label>
-                    <input type="number" list="limitList" id="limitInput">
+                    <input type="number" list="limitList" id="slimitInput">
                     <datalist id="limitList">
                         
                     </datalist>
                 </div>
                 <div class="modal-combo">
                     <label for="qtyInput">Quantity:</label>
-                    <input type="number" list="qtyList" name="qtyList" id="qtyInput">
+                    <input type="number" list="qtyList" name="qtyList" id="sqtyInput">
                     <datalist id="qtyList">
                         <option value=1>
                         <option value=2>
@@ -142,19 +147,19 @@
             <div class="modal-input-container">
                 <div class="modal-radio-container">
                     <label class="radio">
-                        <input type="radio" id="buyRadio" name="contractAction" checked>
+                        <input type="radio" id="sbuyRadio" name="contractAction" checked>
                         <span>Buy</span>  
                     </label>
                     <label class="radio">
-                        <input type="radio" id="sellRadio" name="contractAction">
+                        <input type="radio" id="ssellRadio" name="contractAction">
                         <span>Sell</span>
                     </label>
                 </div>
                     
             </div>
             <div class="modal-buttons-container">
-                <button class="modalButton" onclick="buyContract()">Submit</button>
-                <button class="modalButton" onclick="closeModal()">Close</button>
+                <button class="modalButton" onclick="buySpread()">Submit</button>
+                <button class="modalButton" onclick="closeSpreadModal()">Close</button>
             </div>
         </div>
     </div>

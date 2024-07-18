@@ -10,6 +10,8 @@
 
 <body>
     <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
+    <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
+    <div id="walletNetliquid" data-wallet-netLiquid="{{ netLiquid }}"></div>
 
     <nav class = "navigation">
         <ul>
@@ -22,6 +24,8 @@
                 <div class="wallet-container">
                     <li><span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
+                        <li><span class="dropLabelNet"> {{ netLiquid }} </span></li>
+                        <li><span class="dropLabelUnrealized"> {{ unrealized }} </span></li>
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
                     </div>
@@ -30,7 +34,7 @@
             </div>
         </ul>
     </nav>
-    
+
     <div class="container">
         <h2>Select a current date:</h2>
         <input type="date" id="dateInput" class="date-selector">
