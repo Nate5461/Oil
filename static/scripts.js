@@ -201,12 +201,6 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     mCurrDate.textContent = currentDate;
     mPrice.textContent = spreadPrice;
 
-    // Log the values to ensure they are set
-    console.log("Set values:", {
-        mCloseDate: mCloseDate.textContent,
-        mCurrDate: mCurrDate.textContent,
-        mPrice: mPrice.textContent
-    });
 
     updateOptionsSpreadContract();
     modal.style.display = 'block';
@@ -217,6 +211,7 @@ function updateWalletNumber() {
     fetch('/getWallet')
         .then(response => response.json())
         .then(data => {
+
             const walletNumberElement = document.getElementById('walletInfo');
             const walletNumberSpan = document.querySelector('.wallet_number');
             const netLiquid = document.getElementById('walletNetliquid');
@@ -224,29 +219,24 @@ function updateWalletNumber() {
             const unrealized = document.getElementById('walletUnrealized');
             const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
 
-            if (netLiquid && data.netLiquid_info !== undefined) {
-                netLiquid.dataset.netLiquid = data.netLiquid_info.toFixed(2);
+            const netLiquidInfo = parseFloat(data.netLiquid_info.netLiquid);
+            const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
+            const walletInfo = parseFloat(data.wallet_info.wallet_number);
+
+
+            
+            if (netLiquidSpan && !isNaN(netLiquidInfo)) {
+                netLiquidSpan.textContent = netLiquidInfo.toFixed(2);
             }
-            if (netLiquidSpan && data.netLiquid_info !== undefined) {
-                netLiquidSpan.textContent = data.netLiquid_info.toFixed(2);
+            if (unrealizedSpan && !isNaN(unrealizedInfo)) {
+                unrealizedSpan.textContent = unrealizedInfo.toFixed(2);
             }
-            if (unrealized && data.unrealized_info !== undefined) {
-                unrealized.dataset.unrealized = data.unrealized_info.toFixed(2);
-            }
-            if (unrealizedSpan && data.unrealized_info !== undefined) {
-                unrealizedSpan.textContent = data.unrealized_info.toFixed(2);
-            }
-            if (walletNumberElement && data.wallet_info !== undefined) {
-                walletNumberElement.dataset.walletNumber = data.wallet_info.toFixed(2);
-            }
-            if (walletNumberSpan && data.wallet_info !== undefined) {
-                walletNumberSpan.textContent = data.wallet_info.toFixed(2);
+            if (walletNumberSpan && !isNaN(walletInfo)) {
+                walletNumberSpan.textContent = walletInfo.toFixed(2);
             }
         })
         .catch(error => console.error('Error fetching wallet number:', error));
 }
-
-
 
 // Also update on page load
 updateWalletNumber();
@@ -332,7 +322,7 @@ function updateOptionsForContract() {
         const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
         const optionElement = document.createElement('option');
         optionElement.value = optionValue;
-        console.log(optionValue);
+        
         valuesList.appendChild(optionElement);
     }
 
@@ -349,10 +339,10 @@ function updateOptionsSpreadContract() {
 
     // Generate and add new options
     for (let i = -10; i <= 10; i++) {
-        const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
+        const optionValue = (settlePrice + i * 0.05).toFixed(2); // Ensure one decimal place
         const optionElement = document.createElement('option');
         optionElement.value = optionValue;
-        console.log(optionValue);
+        
         valuesList.appendChild(optionElement);
     }
 
@@ -368,6 +358,7 @@ function updateMain() {
     const nextButton = document.getElementById('nextButton');
     const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
 
+    //These shouldn't be hardcoded
     const minDate = '1993-06-25';
     const maxDate = '2015-12-11';
     dateInput.min = minDate;
@@ -424,10 +415,13 @@ function updateMain() {
                     <td class="contractBox">${row.contract_date}</td>
                     <td>${row.limit_price}</td>
                     <td>${row['settle_price']}</td>
+                    <td>${row.status}</td>
+                    <td>${row.type}</td>
+                    <td>${row.qty}</td>
+                    <td>${row.purchase_date}</td>
+                    <td>${row.purchase_price}</td>
                     <td class="${row.change < 0 ? 'red' : row.change > 0 ? 'green' : ''}">${row.change}</td>
                     <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                    <td>${row.status}</td>
-                    <td>${row.purchase_date}</td>
                 `;
                     dataTable.appendChild(tr);
                 });
@@ -436,6 +430,7 @@ function updateMain() {
 
 
     dateInput.addEventListener('change', function () {
+        localStorage.setItem('selectedDate', dateInput.value);
         fetchData(dateInput.value);
     });
 
@@ -444,6 +439,7 @@ function updateMain() {
         date.setDate(date.getDate() - 1);
         if (date >= new Date(minDate)) {
             dateInput.value = date.toISOString().split('T')[0];
+            localStorage.setItem('selectedDate', dateInput.value);
             fetchDataFunction(dateInput.value);
         }
     });
@@ -453,6 +449,7 @@ function updateMain() {
         date.setDate(date.getDate() + 1);
         if (date <= new Date(maxDate)) {
             dateInput.value = date.toISOString().split('T')[0];
+            localStorage.setItem('selectedDate', dateInput.value);
             fetchDataFunction(dateInput.value);
         }
     });
@@ -512,9 +509,13 @@ function updateMain() {
         }
     });
 
+    const storedDate = localStorage.getItem('selectedDate');
+    if (storedDate) {
+        dateInput.value = storedDate;
+        
+    } else {
+        dateInput.value = maxDate;
+    }
 
-
-    // Set the date input to max date on load
-    dateInput.value = maxDate;
-    fetchDataFunction(maxDate);
+    fetchDataFunction(dateInput.value);
 }

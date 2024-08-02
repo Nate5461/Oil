@@ -5,6 +5,7 @@ from flask_caching import Cache
 from flaskwebgui import FlaskUI
 from waitress import serve
 from threading import Thread
+from datetime import datetime
 import os
 import numpy as np
 
@@ -173,13 +174,12 @@ def buy_contract():
 
         mstrOil = fetch_oil()
 
-        # Assuming data and mstrOil are defined somewhere above this code
+        
         data['contractDate'] = pd.to_datetime(data['contractDate']).date()
         data['transactionDate'] = pd.to_datetime(data['transactionDate']).date()
         
-        # Ensure the mstrOil DataFrame columns are in the correct format
-        mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate']).dt.date
-        mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate']).dt.date
+        mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
+        mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
 
         price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
 
@@ -204,20 +204,21 @@ def buy_contract():
     except Exception as e:
         return jsonify({"message": str(e)}), 500  
     
+    
 
-@app.route('/buySpread', methods=['POST'])
-def buy_spread():
-    try:
-        data = request.json
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("INSERT INTO spreadTransactions (transaction_date, qty, frontMonth, backMonth, type, limit_price, status, purchase_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                       (data['currentDate'], data['qty'], data['frontMonth'], data['backMonth'], data['type'], data['price'], data['status'], data['purchaseDate']))
-        conn.commit()  
-        return jsonify({"message": "Purchase successful"}), 200 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def convert_to_standard_types(data):
+    if isinstance(data, np.integer):
+        return int(data)
+    elif isinstance(data, np.floating):
+        return float(data)
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    elif isinstance(data, dict):
+        return {k: convert_to_standard_types(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_to_standard_types(i) for i in data]
+    else:
+        return data
     
 @app.route('/boughtData', methods=['POST'])
 def bought_data():
@@ -228,7 +229,6 @@ def bought_data():
     # Convert date columns to datetime
     data['contract_date'] = pd.to_datetime(data['contract_date']).dt.date
     data['purchase_date'] = pd.to_datetime(data['purchase_date']).dt.date.astype(str)
-    data['contract_date'] = pd.to_datetime(data['contract_date']).dt.date
     data['trans_date'] = pd.to_datetime(data['trans_date']).dt.date
     selected_current_date = pd.to_datetime(selected_date).date()
 
@@ -237,7 +237,7 @@ def bought_data():
     mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate']).dt.date
 
     for index, row in data.iterrows():
-        # Debugging prints
+        
         row['contract_date'] = pd.to_datetime(row['contract_date']).date()
 
         filtered_mstrOil = mstrOil[(mstrOil['CurrentDate'] == selected_current_date)  & (mstrOil['CloseDate'] == row['contract_date'])]
@@ -249,17 +249,103 @@ def bought_data():
 
     
     
-    data['change'] = (data['settle_price'] - data['limit_price']).round(2)
+    data['change'] = (data['purchase_price'] - data['limit_price']).round(2)
     data['percent_change'] = (data['change'] / data['limit_price'] * 100).round(2)
+
+    # Replace NaN values with 0
+    data['change'] = data['change'].fillna(0)
+    data['percent_change'] = data['percent_change'].fillna(0)
+    data['purchase_date'] = data['purchase_date'].fillna('').astype(str)
+    data['purchase_price'] = data['purchase_price'].fillna('')
 
     # Filter data
     filtered_data = data[(data['trans_date'] <= selected_current_date) & (data['contract_date'] >= selected_current_date)]
     filtered_data['contract_date'] = filtered_data['contract_date'].astype(str)
 
-    # Prepare response
-    response_data = filtered_data[['contract_date', 'settle_price', 'type', 'limit_price', 'purchase_date', 'status', 'change', 'percent_change']].to_dict(orient='records')
+    # Group spreads
+    spread_data = []
+    grouped = filtered_data.groupby(['type', 'contract_date'])
 
+    # Create a dictionary to hold buy and sell groups by contract date
+    buy_groups = {}
+    sell_groups = {}
+
+    for (type_, contract_date), group in grouped:
+        if type_ == 'buy':
+            buy_groups[contract_date] = group
+        elif type_ == 'sell':
+            sell_groups[contract_date] = group
+
+    for buy_contract_date, buy_group in buy_groups.items():
+        buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
+        for sell_contract_date, sell_group in sell_groups.items():
+            sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
+            print("buy ", buy_date, "sell ", sell_date)
+
+            # Check if the months are exactly one month apart
+            if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
+            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
+            (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
+            (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
+                
+                # Match contracts in pairs
+                min_length = min(len(buy_group), len(sell_group))
+                for i in range(min_length):
+                    buy_row = buy_group.iloc[i]
+                    sell_row = sell_group.iloc[i]
+                    spread = {
+                        'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
+                        'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
+                        'type': 'spread',
+                        'limit_price': buy_row['limit_price'],
+                        'purchase_date': buy_row['purchase_date'],
+                        'status': buy_row['status'],
+                        'change': round((buy_row['settle_price'] - sell_row['settle_price']) - buy_row['limit_price'], 2),
+                        'percent_change': round((buy_row['settle_price'] - sell_row['settle_price'] - buy_row['limit_price']) / buy_row['limit_price'] * 100, 2),
+                        'qty': 1  # Each spread represents one pair
+                    }
+                    spread_data.append(spread)
+
+                # Handle remaining buy contracts
+                remaining_buy_quantity = len(buy_group) - min_length
+                if remaining_buy_quantity > 0:
+                    lone_contract = {
+                        'contract_date': buy_group.iloc[min_length]['contract_date'],
+                        'settle_price': buy_group.iloc[min_length]['settle_price'],
+                        'type': 'lone_buy',
+                        'limit_price': buy_group.iloc[min_length]['limit_price'],
+                        'purchase_date': buy_group.iloc[min_length]['purchase_date'],
+                        'status': buy_group.iloc[min_length]['status'],
+                        'change': buy_group.iloc[min_length]['change'],
+                        'percent_change': buy_group.iloc[min_length]['percent_change'],
+                        'qty': remaining_buy_quantity  # Quantity of remaining buy contracts
+                    }
+                    spread_data.append(lone_contract)
+
+                # Handle remaining sell contracts
+                remaining_sell_quantity = len(sell_group) - min_length
+                if remaining_sell_quantity > 0:
+                    lone_contract = {
+                        'contract_date': sell_group.iloc[min_length]['contract_date'],
+                        'settle_price': sell_group.iloc[min_length]['settle_price'],
+                        'type': 'lone_sell',
+                        'limit_price': sell_group.iloc[min_length]['limit_price'],
+                        'purchase_date': sell_group.iloc[min_length]['purchase_date'],
+                        'status': sell_group.iloc[min_length]['status'],
+                        'change': sell_group.iloc[min_length]['change'],
+                        'percent_change': sell_group.iloc[min_length]['percent_change'],
+                        'qty': remaining_sell_quantity  # Quantity of remaining sell contracts
+                    }
+                    spread_data.append(lone_contract)
+
+
+    # Prepare response
+    response_data = filtered_data[['contract_date', 'settle_price', 'type', 'limit_price', 'purchase_date', 'status', 'change', 'percent_change', 'qty', 'purchase_price']].to_dict(orient='records')
+    response_data.extend(spread_data)
+    
     print(response_data)
+    # Convert to standard types
+    response_data = convert_to_standard_types(response_data)
     return jsonify(response_data)
 
 
