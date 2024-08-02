@@ -154,6 +154,7 @@ def get_data():
 
     filtered_data['CloseDate'] = filtered_data['CloseDate'].astype(str)
     # Prepare response
+
     response_data = filtered_data[['CloseDate', 'Settlement Price', 'Change', 'percent_change', 'Spread']].to_dict(orient='records')
 
     return jsonify(response_data)
@@ -162,6 +163,69 @@ def get_data():
 def bought():
     return render_template('bought.html')
 
+@app.route('/stats', methods=['GET'])
+def stats():
+    return render_template('stats.html')
+
+def fetch_settlePrice(date, contract_date):
+    mstrOil = fetch_oil()
+    mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
+    mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
+
+    contract_date = pd.to_datetime(contract_date).date()
+
+    # Filter for the exact match
+    filtered_mstrOil = mstrOil[(mstrOil['CurrentDate'] == date) & (mstrOil['CloseDate'] == contract_date)]
+    
+    if not filtered_mstrOil.empty:
+        settlePrice = filtered_mstrOil['Settlement Price'].values[0]
+    else:
+        # Find the closest previous date's settlement price
+        previous_dates = mstrOil[(mstrOil['CurrentDate'] < date) & (mstrOil['CloseDate'] == contract_date)]
+        if not previous_dates.empty:
+            closest_date = previous_dates['CurrentDate'].max()
+            closest_record = previous_dates[previous_dates['CurrentDate'] == closest_date]
+            settlePrice = closest_record['Settlement Price'].values[0]
+        else:
+            settlePrice = None  # Handle the case where no previous date is found
+
+    return settlePrice
+
+@app.route('/check_pending', methods=['POST'])
+def check_pending():
+    data = request.json
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row  # Set row factory to sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending'")
+
+    current_date = pd.to_datetime(data['date']).date()
+    next_date = pd.to_datetime(data['next_date']).date()
+
+
+    pending_data = cursor.fetchall()
+    
+
+    for transaction in pending_data:
+
+        transaction_date = pd.to_datetime(transaction['trans_date']).date()
+        contract_date = pd.to_datetime(transaction['contract_date']).date()
+
+
+        if transaction_date <= current_date and contract_date >= next_date:
+            
+            current_settle = fetch_settlePrice(current_date, transaction['contract_date'])
+            next_settle = fetch_settlePrice(next_date, transaction['contract_date'])
+
+
+            if (transaction['limit_price'] >= current_settle and transaction['limit_price'] <= next_settle) or (transaction['limit_price'] <= current_settle and transaction['limit_price'] >= next_settle):
+                update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                
+                cursor.execute(update_query, (next_date, next_settle, transaction['Trans_ID']))
+                conn.commit()
+              
+    conn.close()
+    return jsonify("Pending transactions checked")
 
 
 @app.route('/buyContract', methods=['POST'])
@@ -220,6 +284,14 @@ def convert_to_standard_types(data):
     else:
         return data
     
+
+def calculate_margin_contract(qty, risk, maitenaince):
+    pass
+
+def calculate_margin_spread():
+    pass
+
+
 @app.route('/boughtData', methods=['POST'])
 def bought_data():
     selected_date = request.json['date']
@@ -245,12 +317,19 @@ def bought_data():
         if not filtered_mstrOil.empty:
             data.at[index, 'settle_price'] = filtered_mstrOil['Settlement Price'].values[0]
         else:
-            data.at[index, 'settle_price'] = 0
+            # Find the closest previous date's settlement price
+            previous_dates = mstrOil[(mstrOil['CurrentDate'] <= selected_current_date) & (mstrOil['CloseDate'] == row['contract_date'])]
+            if not previous_dates.empty:
+                closest_date = previous_dates['CurrentDate'].max()
+                closest_record = previous_dates[previous_dates['CurrentDate'] == closest_date]
+                data.at[index, 'settle_price'] = closest_record['Settlement Price'].values[0]
+            else:
+                data.at[index, 'settle_price'] = 0
 
     
     
-    data['change'] = (data['purchase_price'] - data['limit_price']).round(2)
-    data['percent_change'] = (data['change'] / data['limit_price'] * 100).round(2)
+    data['change'] = (data['settle_price'] - data['purchase_price']).round(2)
+    data['percent_change'] = (data['change'] / data['settle_price'] * 100).round(2)
 
     # Replace NaN values with 0
     data['change'] = data['change'].fillna(0)
@@ -343,7 +422,6 @@ def bought_data():
     response_data = filtered_data[['contract_date', 'settle_price', 'type', 'limit_price', 'purchase_date', 'status', 'change', 'percent_change', 'qty', 'purchase_price']].to_dict(orient='records')
     response_data.extend(spread_data)
     
-    print(response_data)
     # Convert to standard types
     response_data = convert_to_standard_types(response_data)
     return jsonify(response_data)

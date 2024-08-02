@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Configuration</title>
+    <link rel="stylesheet" href="static/styles.css">
+</head>
+
+<body>
+
+    <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
+    <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
+    <div id="walletNetliquid" data-wallet-netLiquid="{{ netLiquid }}"></div>
+
+    <nav class="navigation">
+        <ul>
+            <div class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/bought">Bought</a></li>
+                <li><a href="/stats">Stats</a></li>
+            </div>
+            <div class="right-container">
+                <div class="wallet-container">
+                    <li><span class="wallet_number"> {{ wallet_number }} </span></li>
+                    <div class="dropdown-menu">
+                        <li><span class="dropLabelNet"> {{ netLiquid }} </span></li>
+                        <li><span class="dropLabelUnrealized"> {{ unrealized }} </span></li>
+                        <button class="dropbtn" onclick="depositFunds()">Deposit</button>
+                        <button class="dropbtn" onclick="withdrawFunds()">Withdraw</button>
+                    </div>
+                </div>
+                <li><span class="restart_btn" onclick="restart()">Restart</span></li>
+            </div>
+        </ul>
+    </nav>
+
+    <h1>Admin Configuration</h1>
+    <form id="configForm">
+        <label for="minDate">Min Date:</label>
+        <input type="date" id="minDate" name="minDate">
+        <span id="currentMinDate"></span><br><br>
+
+        <label for="maxDate">Max Date:</label>
+        <input type="date" id="maxDate" name="maxDate">
+        <span id="currentMaxDate"></span><br><br>
+
+        <label for="spreadMargin">Spread Margin:</label>
+        <input type="number" step="0.001" id="spreadMargin" name="spreadMargin">
+        <span id="currentSpreadMargin"></span><br><br>
+
+        <label for="contractMargin">Contract Margin:</label>
+        <input type="number" step="0.01" id="contractMargin" name="contractMargin">
+        <span id="currentContractMargin"></span><br><br>
+
+        <label for="depositDelay">Deposit Delay (days):</label>
+        <input type="number" id="depositDelay" name="depositDelay">
+        <span id="currentDepositDelay"></span><br><br>
+
+        <label for="capitalReserve">Capital Reserve:</label>
+        <input type="number" step="0.01" id="capitalReserve" name="capitalReserve">
+        <span id="currentCapitalReserve"></span><br><br>
+
+        <label for="marginWarning">Margin Warning:</label>
+        <input type="number" step="0.01" id="marginWarning" name="marginWarning">
+        <span id="currentMarginWarning"></span><br><br>
+
+        <button type="submit">Save</button>
+    </form>
+
+    <script src="static/config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                const config = loadConfig();
+                console.log('Loaded config:', config);
+
+                document.getElementById('minDate').value = config.minDate;
+                document.getElementById('maxDate').value = config.maxDate;
+                document.getElementById('spreadMargin').value = config.spreadMargin;
+                document.getElementById('contractMargin').value = config.contractMargin;
+                document.getElementById('depositDelay').value = config.depositDelay;
+                document.getElementById('capitalReserve').value = config.capitalReserve;
+                document.getElementById('marginWarning').value = config.marginWarning;
+
+                document.getElementById('currentMinDate').textContent = `(Current: ${config.minDate})`;
+                document.getElementById('currentMaxDate').textContent = `(Current: ${config.maxDate})`;
+                document.getElementById('currentSpreadMargin').textContent = `(Current: ${config.spreadMargin})`;
+                document.getElementById('currentContractMargin').textContent = `(Current: ${config.contractMargin})`;
+                document.getElementById('currentDepositDelay').textContent = `(Current: ${config.depositDelay})`;
+                document.getElementById('currentCapitalReserve').textContent = `(Current: ${config.capitalReserve})`;
+                document.getElementById('currentMarginWarning').textContent = `(Current: ${config.marginWarning})`;
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+
+            document.getElementById('configForm').addEventListener('submit', function (event) {
+                event.preventDefault();
+                const newConfig = {
+                    minDate: document.getElementById('minDate').value,
+                    maxDate: document.getElementById('maxDate').value,
+                    spreadMargin: parseFloat(document.getElementById('spreadMargin').value),
+                    contractMargin: parseFloat(document.getElementById('contractMargin').value),
+                    depositDelay: parseInt(document.getElementById('depositDelay').value),
+                    capitalReserve: parseFloat(document.getElementById('capitalReserve').value),
+                    marginWarning: parseFloat(document.getElementById('marginWarning').value)
+                };
+                saveConfig(newConfig);
+                alert('Configuration saved!');
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -108,7 +108,7 @@ function buyContract() {
     }
 
 
-    console.log(contractDate, price, currentDate, qty, limitPrice, type);
+    //console.log(contractDate, price, currentDate, qty, limitPrice, type);
 
     fetch('/buyContract', {
         method: 'POST',
@@ -172,7 +172,7 @@ function openModal(contractDate, price, currentDate) {
     modal.style.display = 'block';
 }
 
-function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
+function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, marginPrice) {
     console.log("vals", contractDate, spreadPrice, currentDate);
 
     const modal = document.getElementById('modal-spread');
@@ -377,15 +377,17 @@ function updateMain() {
         })
             .then(response => response.json())
             .then(data => {
+                
                 dataTable.innerHTML = '';
                 data.forEach(row => {
                     const tr = document.createElement('tr');
 
-                    const closeDate = new Date(row.CloseDate);
-
-                    // Format the date to "Month/Year"
-                    const options = { year: 'numeric', month: 'long' };
-                    const formattedDate = closeDate.toLocaleDateString('en-US', options);
+                    // Manually parse the date string
+                    const [year, month] = row.CloseDate.split('-');
+                    const monthNames = ["January", "February", "March", "April", "May", "June",
+                                        "July", "August", "September", "October", "November", "December"];
+                    const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
+                    
 
                     tr.innerHTML = ` 
                     <td class="contractBox">${formattedDate}</td>
@@ -445,12 +447,37 @@ function updateMain() {
     });
 
     nextButton.addEventListener('click', function () {
-        const date = new Date(dateInput.value);
-        date.setDate(date.getDate() + 1);
-        if (date <= new Date(maxDate)) {
-            dateInput.value = date.toISOString().split('T')[0];
-            localStorage.setItem('selectedDate', dateInput.value);
-            fetchDataFunction(dateInput.value);
+        const originalDate = new Date(dateInput.value);  // Store the original date
+        const date = new Date(originalDate);  // Create a new Date object to increment
+        date.setDate(date.getDate() + 1);  // Increment the date by 1 day
+        const nextdate = date;
+    
+        if (nextdate <= new Date(maxDate)) {
+            const formattedOriginalDate = originalDate.toISOString().split('T')[0];  // Format original date to YYYY-MM-DD
+            const formattedNextDate = nextdate.toISOString().split('T')[0];  // Format next date to YYYY-MM-DD
+    
+            dateInput.value = formattedNextDate;  // Update the date input value
+            localStorage.setItem('selectedDate', formattedNextDate);
+            fetchDataFunction(formattedNextDate);
+    
+            // Call the backend to check pending transactions
+            fetch('/check_pending', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    date: formattedOriginalDate,  // Pass the original date
+                    next_date: formattedNextDate  // Pass the incremented date
+                })
+            })
+            .then(response => response.json())
+            .then(data => {       
+                console.log(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
     });
 
@@ -459,6 +486,8 @@ function updateMain() {
             openModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
         }
     });
+
+    
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
         console.log("Click");
@@ -509,6 +538,7 @@ function updateMain() {
         }
     });
 
+    
     const storedDate = localStorage.getItem('selectedDate');
     if (storedDate) {
         dateInput.value = storedDate;
