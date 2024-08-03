@@ -372,18 +372,21 @@ def bought_data():
                 for i in range(min_length):
                     buy_row = buy_group.iloc[i]
                     sell_row = sell_group.iloc[i]
-                    spread = {
-                        'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
-                        'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
-                        'type': 'spread',
-                        'limit_price': buy_row['limit_price'],
-                        'purchase_date': buy_row['purchase_date'],
-                        'status': buy_row['status'],
-                        'change': round((buy_row['settle_price'] - sell_row['settle_price']) - buy_row['limit_price'], 2),
-                        'percent_change': round((buy_row['settle_price'] - sell_row['settle_price'] - buy_row['limit_price']) / buy_row['limit_price'] * 100, 2),
-                        'qty': 1  # Each spread represents one pair
-                    }
-                    spread_data.append(spread)
+                    
+                    # Check if trans_dates are equal
+                    if buy_row['trans_date'] == sell_row['trans_date']:
+                        spread = {
+                            'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
+                            'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
+                            'type': 'spread',
+                            'limit_price': buy_row['limit_price'],
+                            'purchase_date': buy_row['purchase_date'],
+                            'status': buy_row['status'],
+                            'change': round((buy_row['settle_price'] - sell_row['settle_price']) - buy_row['limit_price'], 2),
+                            'percent_change': round((buy_row['settle_price'] - sell_row['settle_price'] - buy_row['limit_price']) / buy_row['limit_price'] * 100, 2),
+                            'qty': buy_row['qty']  # Each spread represents one pair
+                        }
+                        spread_data.append(spread)
 
                 # Handle remaining buy contracts
                 remaining_buy_quantity = len(buy_group) - min_length

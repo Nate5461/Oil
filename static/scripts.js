@@ -1,4 +1,26 @@
+const config = {
+    minDate: '1993-06-25',
+    maxDate: '2015-12-11',
+    spreadMargin: 0.075,
+    contractMargin: 0.25,
+    depositDelay: 3,
+    capitalReserve: 0.1,
+    marginWarning: 0.1
+};
 
+// Function to load config from local storage or use default
+function loadConfig() {
+    const storedConfig = localStorage.getItem('config');
+    if (storedConfig) {
+        return JSON.parse(storedConfig);
+    }
+    return config;
+}
+
+// Function to save config to local storage
+function saveConfig(newConfig) {
+    localStorage.setItem('config', JSON.stringify(newConfig));
+}
 
 function closeModal() {
     const modal = document.getElementById('modal');
@@ -128,6 +150,8 @@ function buyContract() {
     })
         .then(response => response.json())
         .then(data => {
+            closeModal();
+            closeSpreadModal();
             alert(data.message);
         });
 }
@@ -348,7 +372,9 @@ function updateOptionsSpreadContract() {
 
 }
 
+
 document.addEventListener('DOMContentLoaded', function () {
+    loadConfig()
     updateMain();
 });
 
@@ -358,11 +384,8 @@ function updateMain() {
     const nextButton = document.getElementById('nextButton');
     const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
 
-    //These shouldn't be hardcoded
-    const minDate = '1993-06-25';
-    const maxDate = '2015-12-11';
-    dateInput.min = minDate;
-    dateInput.max = maxDate;
+    dateInput.min = config.minDate;
+    dateInput.max = config.maxDate;
 
     const currentPath = window.location.pathname;
     const fetchDataFunction = currentPath.includes('/bought') ? fetchBought : fetchData;
@@ -439,7 +462,9 @@ function updateMain() {
     prevButton.addEventListener('click', function () {
         const date = new Date(dateInput.value);
         date.setDate(date.getDate() - 1);
-        if (date >= new Date(minDate)) {
+
+        console.log("minDate", config.minDate);
+        if (date >= new Date(config.minDate)) {
             dateInput.value = date.toISOString().split('T')[0];
             localStorage.setItem('selectedDate', dateInput.value);
             fetchDataFunction(dateInput.value);
@@ -451,8 +476,9 @@ function updateMain() {
         const date = new Date(originalDate);  // Create a new Date object to increment
         date.setDate(date.getDate() + 1);  // Increment the date by 1 day
         const nextdate = date;
-    
-        if (nextdate <= new Date(maxDate)) {
+        
+        console.log("maxDate", config.maxDate);
+        if (nextdate <= new Date(config.maxDate)) {
             const formattedOriginalDate = originalDate.toISOString().split('T')[0];  // Format original date to YYYY-MM-DD
             const formattedNextDate = nextdate.toISOString().split('T')[0];  // Format next date to YYYY-MM-DD
     
@@ -544,7 +570,7 @@ function updateMain() {
         dateInput.value = storedDate;
         
     } else {
-        dateInput.value = maxDate;
+        dateInput.value = globalConfig.maxDate;
     }
 
     fetchDataFunction(dateInput.value);
