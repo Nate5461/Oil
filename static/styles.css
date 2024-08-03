@@ -117,6 +117,27 @@ h2 {
   width: 70px;
 }
 
+#marginPrice {
+  font-size: large;
+  color: rgb(189, 16, 16);
+}
+
+.margin_price{
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+#sMarginPrice {
+  font-size: large;
+  color: rgb(189, 16, 16);
+}
+
+.sMargin_price{
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
 .modal_input_container {
     display: flex;
     justify-content: center;

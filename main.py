@@ -197,33 +197,124 @@ def check_pending():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row  # Set row factory to sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending'")
 
     current_date = pd.to_datetime(data['date']).date()
     next_date = pd.to_datetime(data['next_date']).date()
 
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending' AND trans_date <= ? AND contract_date >= ?", (current_date, current_date))
 
     pending_data = cursor.fetchall()
     
+    # Convert pending_data to a pandas DataFrame
+    df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
+    
+    grouped = df.groupby(['type', 'contract_date'])
 
-    for transaction in pending_data:
+    # Create a dictionary to hold buy and sell groups by contract date
+    buy_groups = {}
+    sell_groups = {}
 
-        transaction_date = pd.to_datetime(transaction['trans_date']).date()
-        contract_date = pd.to_datetime(transaction['contract_date']).date()
+    for (type_, contract_date), group in grouped:
+        if type_ == 'buy':
+            buy_groups[contract_date] = group
+        elif type_ == 'sell':
+            sell_groups[contract_date] = group
 
+    # Set to keep track of processed contract dates
+    processed_contract_dates = set()
 
-        if transaction_date <= current_date and contract_date >= next_date:
-            
-            current_settle = fetch_settlePrice(current_date, transaction['contract_date'])
-            next_settle = fetch_settlePrice(next_date, transaction['contract_date'])
+    for buy_contract_date, buy_group in buy_groups.items():
+        buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
+        for sell_contract_date, sell_group in sell_groups.items():
+            sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
 
+            print(buy_date, sell_date)
 
-            if (transaction['limit_price'] >= current_settle and transaction['limit_price'] <= next_settle) or (transaction['limit_price'] <= current_settle and transaction['limit_price'] >= next_settle):
-                update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+            # Check if the months are exactly one month apart
+            if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
+            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
+            (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
+            (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
                 
-                cursor.execute(update_query, (next_date, next_settle, transaction['Trans_ID']))
-                conn.commit()
-              
+                print("Matching months found")
+
+                # Match contracts in pairs
+                min_length = min(len(buy_group), len(sell_group))
+                for i in range(min_length):
+                    buy_row = buy_group.iloc[i]
+                    sell_row = sell_group.iloc[i]
+                    print(buy_row['contract_date'], sell_row['contract_date'])
+
+                    # Check if trans_dates are equal
+                    if buy_row['trans_date'] == sell_row['trans_date']:
+                        print("Matching contracts found")
+
+                        curr_buy_price = fetch_settlePrice(current_date, buy_row['contract_date'])
+                        curr_sell_price = fetch_settlePrice(current_date, sell_row['contract_date'])
+                        next_buy_price = fetch_settlePrice(next_date, buy_row['contract_date'])
+                        next_sell_price = fetch_settlePrice(next_date, sell_row['contract_date'])
+                        current_settle = curr_buy_price - curr_sell_price
+                        next_settle = next_buy_price - next_sell_price
+
+                        if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
+                            print("Transaction matched")
+                            print(df)
+                            
+                            update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                            
+                            try:
+                                # Convert to native Python types
+                                next_date_py = next_date
+                                next_buy_price_py = float(next_buy_price)
+                                buy_trans_id_py = int(buy_row['Trans_ID'])
+                                
+                                next_sell_price_py = float(next_sell_price)
+                                sell_trans_id_py = int(sell_row['Trans_ID'])
+                                
+                                # Print data types and values
+                                print("next_date:", next_date_py, type(next_date_py))
+                                print("next_buy_price:", next_buy_price_py, type(next_buy_price_py))
+                                print("buy_row['Trans_ID']:", buy_trans_id_py, type(buy_trans_id_py))
+                                
+                                cursor.execute(update_query, (next_date_py, next_buy_price_py, buy_trans_id_py))
+                                print("query", update_query, (next_date_py, next_buy_price_py, buy_trans_id_py))
+                                conn.commit()
+                                print("Rows affected:", cursor.rowcount)
+                                
+                                print("next_sell_price:", next_sell_price_py, type(next_sell_price_py))
+                                print("sell_row['Trans_ID']:", sell_trans_id_py, type(sell_trans_id_py))
+                                
+                                cursor.execute(update_query, (next_date_py, next_sell_price_py, sell_trans_id_py))
+                                conn.commit()
+                                print("Rows affected:", cursor.rowcount)
+                            except Exception as e:
+                                print("Error:", e)
+                        
+                        # Mark these contract dates as processed
+                        processed_contract_dates.add(buy_row['Trans_ID'])
+                        processed_contract_dates.add(sell_row['Trans_ID'])
+    
+    
+    for contract_date, group in buy_groups.items():
+        for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                curr_price = fetch_settlePrice(current_date, row['contract_date'])
+                next_price = fetch_settlePrice(next_date, row['contract_date'])
+                if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
+                    update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                    cursor.execute(update_query, (next_date, next_price, row['Trans_ID']))
+                    conn.commit()
+
+    for contract_date, group in sell_groups.items():
+         for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                curr_price = fetch_settlePrice(current_date, row['contract_date'])
+                next_price = fetch_settlePrice(next_date, row['contract_date'])
+                if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
+                    update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                    cursor.execute(update_query, (next_date, next_price, row['Trans_ID']))
+                    conn.commit()  
+
     conn.close()
     return jsonify("Pending transactions checked")
 
@@ -304,20 +395,17 @@ def bought_data():
     data['trans_date'] = pd.to_datetime(data['trans_date']).dt.date
     selected_current_date = pd.to_datetime(selected_date).date()
 
-
     mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate']).dt.date
     mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate']).dt.date
 
+    # Getting settle prices
     for index, row in data.iterrows():
-        
         row['contract_date'] = pd.to_datetime(row['contract_date']).date()
-
-        filtered_mstrOil = mstrOil[(mstrOil['CurrentDate'] == selected_current_date)  & (mstrOil['CloseDate'] == row['contract_date'])]
+        filtered_mstrOil = mstrOil[(mstrOil['CurrentDate'] == selected_current_date) & (mstrOil['CloseDate'] == row['contract_date'])]
         
         if not filtered_mstrOil.empty:
             data.at[index, 'settle_price'] = filtered_mstrOil['Settlement Price'].values[0]
         else:
-            # Find the closest previous date's settlement price
             previous_dates = mstrOil[(mstrOil['CurrentDate'] <= selected_current_date) & (mstrOil['CloseDate'] == row['contract_date'])]
             if not previous_dates.empty:
                 closest_date = previous_dates['CurrentDate'].max()
@@ -326,8 +414,6 @@ def bought_data():
             else:
                 data.at[index, 'settle_price'] = 0
 
-    
-    
     data['change'] = (data['settle_price'] - data['purchase_price']).round(2)
     data['percent_change'] = (data['change'] / data['settle_price'] * 100).round(2)
 
@@ -355,11 +441,13 @@ def bought_data():
         elif type_ == 'sell':
             sell_groups[contract_date] = group
 
+    # Set to keep track of processed contract dates
+    processed_contract_dates = set()
+
     for buy_contract_date, buy_group in buy_groups.items():
         buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
         for sell_contract_date, sell_group in sell_groups.items():
             sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
-            print("buy ", buy_date, "sell ", sell_date)
 
             # Check if the months are exactly one month apart
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
@@ -375,6 +463,19 @@ def bought_data():
                     
                     # Check if trans_dates are equal
                     if buy_row['trans_date'] == sell_row['trans_date']:
+                        # Convert purchase_price to float, handle empty strings
+                        buy_purchase_price = float(buy_row['purchase_price']) if buy_row['purchase_price'] else 0
+                        sell_purchase_price = float(sell_row['purchase_price']) if sell_row['purchase_price'] else 0
+
+                        if buy_purchase_price == 0 or sell_purchase_price == 0:
+                            change = 0
+                            percent_change = 0
+                            purchase_price = ''
+                        else:
+                            purchase_price = round(buy_purchase_price - sell_purchase_price, 2)
+                            change = round((buy_purchase_price - sell_purchase_price) - (buy_row['settle_price'] - sell_row['settle_price']), 2)
+                            percent_change = round(((buy_purchase_price - sell_purchase_price) - (buy_row['settle_price'] - sell_row['settle_price'])) / (buy_row['settle_price'] - sell_row['settle_price']) * 100, 2)
+
                         spread = {
                             'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
                             'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
@@ -382,53 +483,74 @@ def bought_data():
                             'limit_price': buy_row['limit_price'],
                             'purchase_date': buy_row['purchase_date'],
                             'status': buy_row['status'],
-                            'change': round((buy_row['settle_price'] - sell_row['settle_price']) - buy_row['limit_price'], 2),
-                            'percent_change': round((buy_row['settle_price'] - sell_row['settle_price'] - buy_row['limit_price']) / buy_row['limit_price'] * 100, 2),
-                            'qty': buy_row['qty']  # Each spread represents one pair
+                            'purchase_price': purchase_price,
+                            'change': change,
+                            'percent_change': percent_change,
+                            'qty': buy_row['qty']
                         }
                         spread_data.append(spread)
+                        # Mark these contract dates as processed
+                        processed_contract_dates.add(buy_row['Trans_ID'])
+                        processed_contract_dates.add(sell_row['Trans_ID'])
 
-                # Handle remaining buy contracts
-                remaining_buy_quantity = len(buy_group) - min_length
-                if remaining_buy_quantity > 0:
-                    lone_contract = {
-                        'contract_date': buy_group.iloc[min_length]['contract_date'],
-                        'settle_price': buy_group.iloc[min_length]['settle_price'],
-                        'type': 'lone_buy',
-                        'limit_price': buy_group.iloc[min_length]['limit_price'],
-                        'purchase_date': buy_group.iloc[min_length]['purchase_date'],
-                        'status': buy_group.iloc[min_length]['status'],
-                        'change': buy_group.iloc[min_length]['change'],
-                        'percent_change': buy_group.iloc[min_length]['percent_change'],
-                        'qty': remaining_buy_quantity  # Quantity of remaining buy contracts
-                    }
-                    spread_data.append(lone_contract)
+    # Handle remaining lone contracts
+    lone_data = []
+    print(processed_contract_dates)
 
-                # Handle remaining sell contracts
-                remaining_sell_quantity = len(sell_group) - min_length
-                if remaining_sell_quantity > 0:
-                    lone_contract = {
-                        'contract_date': sell_group.iloc[min_length]['contract_date'],
-                        'settle_price': sell_group.iloc[min_length]['settle_price'],
-                        'type': 'lone_sell',
-                        'limit_price': sell_group.iloc[min_length]['limit_price'],
-                        'purchase_date': sell_group.iloc[min_length]['purchase_date'],
-                        'status': sell_group.iloc[min_length]['status'],
-                        'change': sell_group.iloc[min_length]['change'],
-                        'percent_change': sell_group.iloc[min_length]['percent_change'],
-                        'qty': remaining_sell_quantity  # Quantity of remaining sell contracts
-                    }
-                    spread_data.append(lone_contract)
+    for contract_date, group in buy_groups.items():
+        for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                # Convert purchase_price to float, handle empty strings
+                purchase_price = float(row['purchase_price']) if row['purchase_price'] else 0
+                lone_contract = {
+                    'contract_date': row['contract_date'],
+                    'settle_price': row['settle_price'],
+                    'type': 'buy',
+                    'limit_price': row['limit_price'],
+                    'purchase_date': row['purchase_date'],
+                    'status': row['status'],
+                    'purchase_price': row['purchase_price'],
+                    'change': row['change'],
+                    'percent_change': row['percent_change'],
+                    'qty': row['qty']
+                }
+                lone_data.append(lone_contract)
 
+    for Trans_ID, group in sell_groups.items():
+        for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                # Convert purchase_price to float, handle empty strings
+                purchase_price = float(row['purchase_price']) if row['purchase_price'] else 0
+                lone_contract = {
+                    'contract_date': row['contract_date'],
+                    'settle_price': row['settle_price'],
+                    'type': 'sell',
+                    'limit_price': row['limit_price'],
+                    'purchase_date': row['purchase_date'],
+                    'status': row['status'],
+                    'purchase_price': row['purchase_price'],
+                    'change': row['change'],
+                    'percent_change': row['percent_change'],
+                    'qty': row['qty']
+                }
+                lone_data.append(lone_contract)
 
     # Prepare response
-    response_data = filtered_data[['contract_date', 'settle_price', 'type', 'limit_price', 'purchase_date', 'status', 'change', 'percent_change', 'qty', 'purchase_price']].to_dict(orient='records')
-    response_data.extend(spread_data)
-    
+    response_data = spread_data + lone_data
+
     # Convert to standard types
     response_data = convert_to_standard_types(response_data)
     return jsonify(response_data)
 
+
+@app.route('/update_wallet', methods=['POST'])
+def update_wallet():
+    data = request.json
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE wallet SET amount = ?", (data['amount'],))
+    conn.commit()
+    return jsonify({"message": "Wallet updated"}), 200
 
 
 def run_server():

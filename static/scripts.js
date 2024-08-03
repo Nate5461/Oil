@@ -1,8 +1,8 @@
 const config = {
     minDate: '1993-06-25',
     maxDate: '2015-12-11',
-    spreadMargin: 0.075,
-    contractMargin: 0.25,
+    spreadMargin: 0.025,
+    contractMargin: 0.10,
     depositDelay: 3,
     capitalReserve: 0.1,
     marginWarning: 0.1
@@ -188,21 +188,26 @@ function openModal(contractDate, price, currentDate) {
     const mCloseDate = document.getElementById('mContractDate');
     const mCurrDate = document.getElementById('mCurrentDate');
     const mPrice = document.getElementById('mPrice');
+    const mMargin = document.getElementById('marginPrice');
+
+
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
     mPrice.textContent = price;
+    mMargin.textContent = (parseFloat(price) * 1000 * config.contractMargin).toFixed(2);
 
     updateOptionsForContract();
     modal.style.display = 'block';
 }
 
-function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, marginPrice) {
+function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
     console.log("vals", contractDate, spreadPrice, currentDate);
 
     const modal = document.getElementById('modal-spread');
     const mCloseDate = document.getElementById('sContractDate');
     const mCurrDate = document.getElementById('sCurrentDate');
     const mPrice = document.getElementById('sPrice');
+    const mMargin = document.getElementById('sMarginPrice');
 
     // Check if elements are correctly selected
     if (!mCloseDate || !mCurrDate || !mPrice) {
@@ -220,6 +225,10 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     mPrice.dataset.price1 = price1;
     mPrice.dataset.price2 = price2;
 
+    let marginPrice = parseFloat(price2) * 1000 * config.spreadMargin;
+
+    mMargin.dataset.marginPrice = marginPrice;
+    mMargin.textContent = marginPrice.toFixed(2);
 
     mCloseDate.textContent = month1 + '/' + month2 + ' ' + year;
     mCurrDate.textContent = currentDate;
@@ -436,8 +445,27 @@ function updateMain() {
                 dataTable.innerHTML = '';
                 data.forEach(row => {
                     const tr = document.createElement('tr');
+                    
+                    const monthNames = ["January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December"];
+                    
+                    let formattedDate;
+                    if (row.contract_date.includes('/')) {
+
+                        const [con1, con2] = row.contract_date.split('/');
+
+                        const [year1, month1] = con1.split('-');
+                        const [year2, month2] = con2.split('-');
+                        formattedDate = `${monthNames[parseInt(month1, 10) - 1]}/${monthNames[parseInt(month2, 10) - 1]}  ${year1}`;
+                    } else {
+                        const [year, month] = row.contract_date.split('-');
+                        formattedDate = `${monthNames[parseInt(month, 10) - 1]}  ${year}`;
+                    }
+                    
+                    
+
                     tr.innerHTML = ` 
-                    <td class="contractBox">${row.contract_date}</td>
+                    <td class="contractBox">${formattedDate}</td>
                     <td>${row.limit_price}</td>
                     <td>${row['settle_price']}</td>
                     <td>${row.status}</td>
@@ -456,7 +484,7 @@ function updateMain() {
 
     dateInput.addEventListener('change', function () {
         localStorage.setItem('selectedDate', dateInput.value);
-        fetchData(dateInput.value);
+        fetchDataFunction(dateInput.value);
     });
 
     prevButton.addEventListener('click', function () {
@@ -570,7 +598,7 @@ function updateMain() {
         dateInput.value = storedDate;
         
     } else {
-        dateInput.value = globalConfig.maxDate;
+        dateInput.value = config.maxDate;
     }
 
     fetchDataFunction(dateInput.value);
