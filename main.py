@@ -194,23 +194,19 @@ def fetch_settlePrice(date, contract_date):
 @app.route('/check_pending', methods=['POST'])
 def check_pending():
     data = request.json
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row  # Set row factory to sqlite3.Row
-    cursor = conn.cursor()
-
     current_date = pd.to_datetime(data['date']).date()
     next_date = pd.to_datetime(data['next_date']).date()
 
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending' AND trans_date <= ? AND contract_date >= ?", (current_date, current_date))
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending' AND trans_date <= ? AND contract_date >= ?", (current_date, current_date))
     pending_data = cursor.fetchall()
-    
-    # Convert pending_data to a pandas DataFrame
+
     df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
-    
     grouped = df.groupby(['type', 'contract_date'])
 
-    # Create a dictionary to hold buy and sell groups by contract date
     buy_groups = {}
     sell_groups = {}
 
@@ -220,7 +216,6 @@ def check_pending():
         elif type_ == 'sell':
             sell_groups[contract_date] = group
 
-    # Set to keep track of processed contract dates
     processed_contract_dates = set()
 
     for buy_contract_date, buy_group in buy_groups.items():
@@ -228,27 +223,17 @@ def check_pending():
         for sell_contract_date, sell_group in sell_groups.items():
             sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
 
-            print(buy_date, sell_date)
-
-            # Check if the months are exactly one month apart
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
-            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
-            (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
-            (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
-                
-                print("Matching months found")
+               (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
+               (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
+               (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
 
-                # Match contracts in pairs
                 min_length = min(len(buy_group), len(sell_group))
                 for i in range(min_length):
                     buy_row = buy_group.iloc[i]
                     sell_row = sell_group.iloc[i]
-                    print(buy_row['contract_date'], sell_row['contract_date'])
 
-                    # Check if trans_dates are equal
                     if buy_row['trans_date'] == sell_row['trans_date']:
-                        print("Matching contracts found")
-
                         curr_buy_price = fetch_settlePrice(current_date, buy_row['contract_date'])
                         curr_sell_price = fetch_settlePrice(current_date, sell_row['contract_date'])
                         next_buy_price = fetch_settlePrice(next_date, buy_row['contract_date'])
@@ -257,40 +242,17 @@ def check_pending():
                         next_settle = next_buy_price - next_sell_price
 
                         if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
-                            print("Transaction matched")
-                            print(df)
-                            
                             update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
-                            
                             try:
-                                # Convert to native Python types
-                                next_date_py = next_date
-                                next_buy_price_py = float(next_buy_price)
-                                buy_trans_id_py = int(buy_row['Trans_ID'])
-                                
-                                next_sell_price_py = float(next_sell_price)
-                                sell_trans_id_py = int(sell_row['Trans_ID'])
-                                
-                                
-                                cursor.execute(update_query, (next_date_py, next_buy_price_py, buy_trans_id_py))
-                                #print("query", update_query, (next_date_py, next_buy_price_py, buy_trans_id_py))
+                                cursor.execute(update_query, (next_date, float(next_buy_price), int(buy_row['Trans_ID'])))
+                                cursor.execute(update_query, (next_date, float(next_sell_price), int(sell_row['Trans_ID'])))
                                 conn.commit()
-                                #print("Rows affected:", cursor.rowcount)
-                                
-                                #print("next_sell_price:", next_sell_price_py, type(next_sell_price_py))
-                                #print("sell_row['Trans_ID']:", sell_trans_id_py, type(sell_trans_id_py))
-                                
-                                cursor.execute(update_query, (next_date_py, next_sell_price_py, sell_trans_id_py))
-                                conn.commit()
-                                #print("Rows affected:", cursor.rowcount)
                             except Exception as e:
                                 print("Error:", e)
 
-                        # Mark these contract dates as processed
                         processed_contract_dates.add(buy_row['Trans_ID'])
                         processed_contract_dates.add(sell_row['Trans_ID'])
-    
-    
+
     for contract_date, group in buy_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
@@ -302,14 +264,14 @@ def check_pending():
                     conn.commit()
 
     for contract_date, group in sell_groups.items():
-         for _, row in group.iterrows():
+        for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
                 curr_price = fetch_settlePrice(current_date, row['contract_date'])
                 next_price = fetch_settlePrice(next_date, row['contract_date'])
                 if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
                     update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
                     cursor.execute(update_query, (next_date, next_price, row['Trans_ID']))
-                    conn.commit()  
+                    conn.commit()
 
     conn.close()
     return jsonify("Pending transactions checked")
@@ -332,129 +294,105 @@ def update_wallet():
     print("update_wallet_values please")
     data = request.json
     current_date = pd.to_datetime(data['date']).date()
+    
+    # Open database connection once
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("Select * from wallet")
-    conn.commit()
+    
+    # Fetch wallet and transactions in one go
+    cursor.execute("SELECT * FROM wallet")
     wallet = cursor.fetchall()
     
     cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ?", (current_date,))
-    conn.commit()
     transactions = cursor.fetchall()
-
-    data = fetch_oil()
-
-    data['CurrentDate'] = pd.to_datetime(data['CurrentDate'], format='%Y-%m-%d').dt.date
-    data['CloseDate'] = pd.to_datetime(data['CloseDate'], format='%Y-%m-%d').dt.date
-
+    
+    # Fetch oil data
+    oil_data = fetch_oil()
+    oil_data['CurrentDate'] = pd.to_datetime(oil_data['CurrentDate'], format='%Y-%m-%d').dt.date
+    oil_data['CloseDate'] = pd.to_datetime(oil_data['CloseDate'], format='%Y-%m-%d').dt.date
+    
     # Margin update
     margin = 0
-
-    # Create a dictionary to hold buy and sell groups by contract date
     buy_groups = {}
     sell_groups = {}
-
+    
     for transaction in transactions:
         type_ = transaction[7]
         contract_date = transaction[2]
         
         if type_ == 'buy':
-            if contract_date not in buy_groups:
-                buy_groups[contract_date] = []
-            buy_groups[contract_date].append(transaction)
+            buy_groups.setdefault(contract_date, []).append(transaction)
         elif type_ == 'sell':
-            if contract_date not in sell_groups:
-                sell_groups[contract_date] = []
-            sell_groups[contract_date].append(transaction)
-
-    # Set to keep track of processed contract dates
+            sell_groups.setdefault(contract_date, []).append(transaction)
+    
     processed_contract_dates = set()
-
-
+    
     for buy_contract_date, buy_group in buy_groups.items():
         buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
         for sell_contract_date, sell_group in sell_groups.items():
             sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
-
-            print(buy_date, sell_date)
-
-            # Check if the months are exactly one month apart
+            
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
-            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
-            (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
-            (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
+               (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
+               (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
+               (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
                 
-                # Match contracts in pairs
                 min_length = min(len(buy_group), len(sell_group))
                 for i in range(min_length):
                     buy_row = buy_group[i]
                     sell_row = sell_group[i]
                     
-                    # Check if trans_dates are equal
                     if buy_row[1] == sell_row[1]:
-                        
                         margin += spreadMargin * buy_row[3]
-                        
-
-                        # Mark these contract dates as processed
-                        processed_contract_dates.add(buy_row[0])
-                        processed_contract_dates.add(sell_row[0])
-
-    for contract_date, group in buy_groups.items():
+                        processed_contract_dates.update([buy_row[0], sell_row[0]])
+    
+    for group in buy_groups.values():
         for row in group:
             if row[0] not in processed_contract_dates:
                 margin += contractMargin * row[3]
-                
-                
-
-    for contract_date, group in sell_groups.items():
+    
+    for group in sell_groups.values():
         for row in group:
             if row[0] not in processed_contract_dates:
                 margin += contractMargin * row[3]
-                
-
+    
     cursor.execute("UPDATE wallet SET margin = ?", (margin,))
     conn.commit()
-
+    
     print("Margin", margin)
-    # This updates unrealized
+    
     temp = 0
     for transaction in transactions:
-        print("transaction", transaction)
-        contract_date = pd.to_datetime(transaction[2]).date()  
-        filtered_data = data[data['CurrentDate'] == current_date]
-
+        contract_date = pd.to_datetime(transaction[2]).date()
+        filtered_data = oil_data[oil_data['CurrentDate'] == current_date]
+        
         if filtered_data.empty:
-            filtered_data = data[data['CurrentDate'] < current_date]
+            filtered_data = oil_data[oil_data['CurrentDate'] < current_date]
             if not filtered_data.empty:
                 closest_date = filtered_data['CurrentDate'].max()
                 filtered_data = filtered_data[filtered_data['CurrentDate'] == closest_date]
-
+        
         filtered_data = filtered_data[filtered_data['CloseDate'] == contract_date]
         
         if not filtered_data.empty:
             settle_price = filtered_data['Settlement Price'].values[0]
-            
-            print("in filtered_data", settle_price)
-            if transaction[7] == 'buy':  
-                print("buy")
-                temp += (settle_price - transaction[8]) * transaction[3] * 1000  
+            if transaction[7] == 'buy':
+                temp += (settle_price - transaction[8]) * transaction[3] * 1000
             else:
-                print("sell")
-                temp -= (settle_price - transaction[8]) * transaction[3] * 1000 
-
+                temp -= (settle_price - transaction[8]) * transaction[3] * 1000
+    
     print("temp", temp)
     cursor.execute("UPDATE wallet SET unrealized = ?", (temp,))
     conn.commit()
-
-    wallet_amount = wallet[0][0]  # Assuming 'amount' is the second column in the wallet table
-    wallet_margin = wallet[0][1]  # Assuming 'margin' is the third column in the wallet table
-
+    
+    wallet_amount = wallet[0][0]
+    wallet_margin = wallet[0][1]
+    
     if wallet_amount - temp - wallet_margin < 0:
         print("Margin call")
-
+    
+    conn.close()
     return jsonify({'status': 'success'})
-        
 
 @app.route('/buyContract', methods=['POST'])
 def buy_contract():

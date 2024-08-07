@@ -21,11 +21,12 @@
                 <li><a href="/stats">Stats</a></li>
             </div>
             <div class="right-container">
+                <div class="loader" id="loadImg"></div>
+                <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
+                <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
                 <div class="wallet-container">
                     <li><span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
-                        <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
-                        <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
                     </div>
@@ -96,23 +97,10 @@
                 </div>
             </div>
             <div class="margin_price">
-                <p id="p3">Margin Price: <span id="marginPrice"></span></p>
-            </div>
-            <div class="modal-input-container">
-                <div class="modal-radio-container">
-                    <label class="radio">
-                        <input type="radio" id="buyRadio" name="contractAction" checked>
-                        <span>Buy</span>  
-                    </label>
-                    <label class="radio">
-                        <input type="radio" id="sellRadio" name="contractAction">
-                        <span>Sell</span>
-                    </label>
-                </div>
-                    
+                <p id="p3">Profit/Loss: <span id="mProfit"></span></p>
             </div>
             <div class="modal-buttons-container">
-                <button class="modalButton" onclick="changeContract()">Submit</button>
+                <button class="modalButtonCon" onclick="changeContract()">Close Contract</button>
                 <button class="modalButton" onclick="closeModal()">Close</button>
             </div>
         </div>

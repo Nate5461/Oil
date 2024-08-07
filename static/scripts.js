@@ -218,6 +218,63 @@ function openModal(contractDate, price, currentDate) {
     modal.style.display = 'block';
 }
 
+
+function getSingleProfit(contractDate, currentDate) {
+    fetch('/getSingleProfit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contractDate: contractDate, currentDate: currentDate }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log("we did the vals, ", data.status);
+        })
+        .catch(error => console.error('Error fetching wallet number:', error));
+}
+
+function getSpreadProfit(contractDate, contractDate1, currentDate) {
+    fetch('/getSpreadProfit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contractDate: contractDate, contractDate1: contractDate1, currentDate: currentDate }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log("we did the vals, ", data.status);
+        })
+        .catch(error => console.error('Error fetching wallet number:', error));
+}
+
+
+
+function openCloseModal(contractDate, price, currentDate) {
+    console.log(contractDate, price, currentDate);
+    const modal = document.getElementById('modal');
+    const mCloseDate = document.getElementById('mContractDate');
+    const mCurrDate = document.getElementById('mCurrentDate');
+    const mPrice = document.getElementById('mPrice');
+    const mProfit = document.getElementById('mProfit');
+
+
+    mCloseDate.textContent = contractDate;
+    mCurrDate.textContent = currentDate;
+    mPrice.textContent = price;
+
+    //Need to call a function for profit calculation ô
+
+    //Need function for actually closing
+
+    //How do we differ spread vs straight contract?
+    mProfit.textContent = 5;
+
+    updateOptionsForContract();
+    modal.style.display = 'block';
+}
+
 function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
     console.log("vals", contractDate, spreadPrice, currentDate);
 
@@ -272,6 +329,8 @@ function updateWalletValues() {
             console.log("we did the vals, ", data.status);
         })
         .catch(error => console.error('Error fetching wallet number:', error));
+
+    document.getElementById('loadImg').style.display = 'None';
 }
 
 function updateWalletNumber() {
@@ -303,6 +362,8 @@ function updateWalletNumber() {
             if (walletNumberSpan && !isNaN(walletInfo)) {
                 walletNumberSpan.textContent = walletInfo.toFixed(2);
             }
+
+            
         })
         .catch(error => console.error('Error fetching wallet number:', error));
 }
@@ -536,6 +597,9 @@ function updateMain() {
     });
 
     nextButton.addEventListener('click', function () {
+        document.getElementById('loadImg').style.display = 'block';
+
+
         const originalDate = new Date(dateInput.value);  // Store the original date
         const date = new Date(originalDate);  // Create a new Date object to increment
         date.setDate(date.getDate() + 1);  // Increment the date by 1 day
@@ -572,11 +636,17 @@ function updateMain() {
 
         updateWalletValues();
         updateWalletNumber();
+
+        //document.getElementById('loadImg').style.display = 'None';
     });
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
-        if (event.target && event.target.classList.contains('contractBox')) {
-            openModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
+        if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought')) {
+            console.log("run1");
+            openCloseModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
+        } else if (event.target && event.target.classList.contains('contractBox')) {
+            console.log("run2");
+            openModal(event.target.textContent, dateInput.value);
         }
     });
 
