@@ -37,7 +37,7 @@
     </nav>
 
     <div class="container">
-        <h2>Select a current date:</h2>
+        <h2>Select a current date: <span id = "current-date"></span></h2>
         <input type="date" id="dateInput" class="date-selector">
         <div class="buttons">
             <button id="prevButton">&lt;</button>
@@ -71,7 +71,7 @@
                 <p id="p1">Contract Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
             </div>
             <div class="modal_prices">
-                <p id="p2">Price: <span id="mPrice"></span></p>
+                <p id="p2">Purchase price: <span id="mPrice"></span></p>
                 <div class="modal-combo">  
                     <label for="limitInput">Limit Price:</label>
                     <input type="number" list="limitList" id="limitInput">
@@ -83,16 +83,7 @@
                     <label for="qtyInput">Quantity:</label>
                     <input type="number" list="qtyList" name="qtyList" id="qtyInput">
                     <datalist id="qtyList">
-                        <option value=1>
-                        <option value=2>
-                        <option value=3>
-                        <option value=4>
-                        <option value=5>
-                        <option value=6>
-                        <option value=7>
-                        <option value=8>
-                        <option value=9>
-                        <option value=10>
+                        
                     </datalist>
                 </div>
             </div>

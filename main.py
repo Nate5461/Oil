@@ -191,6 +191,28 @@ def fetch_settlePrice(date, contract_date):
 
     return settlePrice
 
+@app.route('/getSingleProfit', methods=['POST'])
+def get_single_profit():
+    data = request.json
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    current_date = pd.to_datetime(data['date']).date()
+    contract_date = pd.to_datetime(data['contract_date']).date()
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND contract_date = ? AND ", (current_date, contract_date))
+    pending_data = cursor.fetchall()
+
+    df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
+
+    limit = data['limit_price']
+    qty = data['qty']
+
+    profit = limit - df['purchase_price'].values[0]
+
+
+
 @app.route('/check_pending', methods=['POST'])
 def check_pending():
     data = request.json
@@ -401,9 +423,7 @@ def buy_contract():
         data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-
         mstrOil = fetch_oil()
-
         
         data['contractDate'] = pd.to_datetime(data['contractDate']).date()
         data['transactionDate'] = pd.to_datetime(data['transactionDate']).date()
@@ -411,8 +431,13 @@ def buy_contract():
         mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
         mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
 
+        print(type(data['transactionDate']))
+        print(type(data['contractDate']))
+        print(mstrOil.dtypes)
+
         price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
 
+        print("we have price", price)
 
         #THis will never happen for spreads currently
         if float(data['limitPrice']) == float(price):
@@ -424,13 +449,12 @@ def buy_contract():
             status = 'Pending'
             purchase_price = None
 
-        
+        print("About to execute")
 
         cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type, purchase_price, trans_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                        (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type'], purchase_price, data['trans_price']))
         conn.commit()  
-
-        cursor.execute("SELECT * FROM wallet")
+        conn.close()
 
         return jsonify({"message": "Transaction sent"}), 200 
     except Exception as e:
@@ -549,14 +573,15 @@ def bought_data():
                         spread = {
                             'contract_date': f"{sell_row['contract_date']}/{buy_row['contract_date']}",
                             'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
-                            'type': 'sell',
+                            'type': 'buy',
                             'limit_price': buy_row['limit_price'],
                             'purchase_date': buy_row['purchase_date'],
                             'status': buy_row['status'],
                             'purchase_price': purchase_price,
                             'change': change,
                             'percent_change': percent_change,
-                            'qty': buy_row['qty']
+                            'qty': buy_row['qty'],
+                            'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
                         }
                         spread_data.append(spread)
                         # Mark these contract dates as processed
@@ -591,14 +616,15 @@ def bought_data():
                         spread = {
                             'contract_date': f"{sell_row['contract_date']}/{buy_row['contract_date']}",
                             'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
-                            'type': 'buy',
+                            'type': 'sell',
                             'limit_price': buy_row['limit_price'],
                             'purchase_date': buy_row['purchase_date'],
                             'status': buy_row['status'],
                             'purchase_price': purchase_price,
                             'change': change,
                             'percent_change': percent_change,
-                            'qty': buy_row['qty']
+                            'qty': buy_row['qty'],
+                            'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
                         }
                         spread_data.append(spread)
                         # Mark these contract dates as processed
@@ -625,7 +651,8 @@ def bought_data():
                     'purchase_price': row['purchase_price'],
                     'change': row['change'],
                     'percent_change': row['percent_change'],
-                    'qty': row['qty']
+                    'qty': row['qty'],
+                    'Trans_ID': row['Trans_ID']
                 }
                 lone_data.append(lone_contract)
 
@@ -644,7 +671,8 @@ def bought_data():
                     'purchase_price': row['purchase_price'],
                     'change': row['change'],
                     'percent_change': row['percent_change'],
-                    'qty': row['qty']
+                    'qty': row['qty'],
+                    'Trans_ID': row['Trans_ID']
                 }
                 lone_data.append(lone_contract)
 
@@ -665,6 +693,33 @@ def bought_data():
 
     return jsonify(response_data)
 
+@app.route('/cancelTransaction', methods=['POST'])
+def cancel_transaction():
+    data = request.json
+    id = data['transID']
+    
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    if id.find(',') != -1:
+        ids = id.split(',')
+        id1 = ids[0]
+        id2 = ids[1]
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (id1,))
+        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (id2,))
+        conn.commit()
+        conn.close()
+    else:
+        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (id,))
+        conn.commit()
+        conn.close()
+
+    return jsonify({"message": "Transaction cancelled"}), 200
+                   
 
 
 def run_server():

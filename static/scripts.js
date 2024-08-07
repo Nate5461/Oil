@@ -148,7 +148,7 @@ function buyContract() {
     }
 
 
-    //console.log(contractDate, price, currentDate, qty, limitPrice, type);
+    console.log(contractDate, price, currentDate, qty, limitPrice, type);
 
     fetch('/buyContract', {
         method: 'POST',
@@ -219,60 +219,76 @@ function openModal(contractDate, price, currentDate) {
 }
 
 
-function getSingleProfit(contractDate, currentDate) {
-    fetch('/getSingleProfit', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ contractDate: contractDate, currentDate: currentDate }),
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log("we did the vals, ", data.status);
-        })
-        .catch(error => console.error('Error fetching wallet number:', error));
-}
 
-function getSpreadProfit(contractDate, contractDate1, currentDate) {
-    fetch('/getSpreadProfit', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ contractDate: contractDate, contractDate1: contractDate1, currentDate: currentDate }),
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log("we did the vals, ", data.status);
-        })
-        .catch(error => console.error('Error fetching wallet number:', error));
+function closeContract() {
+
 }
 
 
+function openCloseModal(contractDate, currentDate, qty, purchase_price, type, currentPrice) {
+    console.log(contractDate, currentDate, qty, purchase_price, type);
 
-function openCloseModal(contractDate, price, currentDate) {
-    console.log(contractDate, price, currentDate);
+
+    
     const modal = document.getElementById('modal');
     const mCloseDate = document.getElementById('mContractDate');
     const mCurrDate = document.getElementById('mCurrentDate');
     const mPrice = document.getElementById('mPrice');
     const mProfit = document.getElementById('mProfit');
-
+    const mQty = document.getElementById('qtyInput');
+    const mLimit = document.getElementById('limitInput');
 
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
-    mPrice.textContent = price;
+    mPrice.textContent = purchase_price;
 
-    //Need to call a function for profit calculation ô
+    updateOptionsForCloseContract(qty);
+
+    // Add event listeners to combo boxes
+    mQty.addEventListener('change', calculateAndDisplayProfit);
+    mLimit.addEventListener('change', calculateAndDisplayProfit);
+
+    function calculateAndDisplayProfit() {
+        const selectedQty = parseInt(mQty.value);
+        const selectedLimitPrice = parseFloat(mLimit.value);
+
+        if (!isNaN(selectedQty) && !isNaN(selectedLimitPrice)) {
+            const profit = calculateProfit(selectedQty, selectedLimitPrice, purchase_price, type);
+            mProfit.textContent = profit.toFixed(2);
+        }
+    }
+
+    function calculateProfit(qty, limitPrice, purchasePrice, type) {
+        if (type === 'buy') {
+            return (limitPrice - purchasePrice) * qty * 1000;
+        } else{
+            return (purchasePrice - limitPrice) * qty * 1000;
+        }
+        
+    }
 
     //Need function for actually closing
 
     //How do we differ spread vs straight contract?
-    mProfit.textContent = 5;
+    if (contractDate.includes('/')) {
+        const [month1, month2] = contractDate.split('/');
+        const year = currentDate.split(' ')[1];
+        let contractDate1 = month1 + '-' + year
+        
+        //Going to need if statement for jan-dec spreads
+        let contractDate2 = month2 + '-' + year;
 
-    updateOptionsForContract();
+        
+        closeContract();
+    } else {
+        closeSpreadContract();
+    }
     modal.style.display = 'block';
+}
+
+
+function closeSpreadContract() {
+
 }
 
 function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
@@ -314,58 +330,53 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     modal.style.display = 'block';
 }
 
-function updateWalletValues() {
-    
+async function updateWalletValues() {
     const storedDate = localStorage.getItem('selectedDate');
-    fetch('/getWalletValues', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ date: storedDate }),
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log("we did the vals, ", data.status);
-        })
-        .catch(error => console.error('Error fetching wallet number:', error));
+    try {
+        const response = await fetch('/getWalletValues', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ date: storedDate }),
+        });
+        const data = await response.json();
+        console.log("we did the vals, ", data.status);
+    } catch (error) {
+        console.error('Error fetching wallet values:', error);
+    }
 
-    document.getElementById('loadImg').style.display = 'None';
+    document.getElementById('loadImg').style.display = 'none';
 }
 
-function updateWalletNumber() {
-    fetch('/getWallet')
-        .then(response => response.json())
-        .then(data => {
+async function updateWalletNumber() {
+    try {
+        const response = await fetch('/getWallet');
+        const data = await response.json();
 
-            const walletNumberElement = document.getElementById('walletInfo');
-            const walletNumberSpan = document.querySelector('.wallet_number');
-            const margin = document.getElementById('walletMargin');
-            const marginSpan = document.querySelector('.dropLabelMargin');
-            const unrealized = document.getElementById('walletUnrealized');
-            const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
+        const walletNumberElement = document.getElementById('walletInfo');
+        const walletNumberSpan = document.querySelector('.wallet_number');
+        const margin = document.getElementById('walletMargin');
+        const marginSpan = document.querySelector('.dropLabelMargin');
+        const unrealized = document.getElementById('walletUnrealized');
+        const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
 
-            const marginInfo = parseFloat(data.margin_info.margin);
+        const marginInfo = parseFloat(data.margin_info.margin);
+        const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
+        const walletInfo = parseFloat(data.wallet_info.wallet_number);
 
-            //console.log('marginInfo', marginInfo);
-            const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
-            const walletInfo = parseFloat(data.wallet_info.wallet_number);
-
-
-            
-            if (marginSpan && !isNaN(marginInfo)) {
-                marginSpan.textContent = marginInfo.toFixed(2);
-            }
-            if (unrealizedSpan && !isNaN(unrealizedInfo)) {
-                unrealizedSpan.textContent = unrealizedInfo.toFixed(2);
-            }
-            if (walletNumberSpan && !isNaN(walletInfo)) {
-                walletNumberSpan.textContent = walletInfo.toFixed(2);
-            }
-
-            
-        })
-        .catch(error => console.error('Error fetching wallet number:', error));
+        if (marginSpan && !isNaN(marginInfo)) {
+            marginSpan.textContent = marginInfo.toFixed(2);
+        }
+        if (unrealizedSpan && !isNaN(unrealizedInfo)) {
+            unrealizedSpan.textContent = unrealizedInfo.toFixed(2);
+        }
+        if (walletNumberSpan && !isNaN(walletInfo)) {
+            walletNumberSpan.textContent = walletInfo.toFixed(2);
+        }
+    } catch (error) {
+        console.error('Error fetching wallet number:', error);
+    }
 }
 
 
@@ -456,6 +467,33 @@ function updateOptionsForContract() {
 
 }
 
+function updateOptionsForCloseContract(qty) {
+    const settlePrice = parseFloat(document.getElementById('mPrice').textContent);
+    const valuesList = document.getElementById('limitList');
+    
+    const qtyList = document.getElementById('qtyList');
+    qtyList.innerHTML = '';
+
+    for (let i = 1; i <= qty; i++) {
+        const optionElement = document.createElement('option');
+        optionElement.value = i;
+        qtyList.appendChild(optionElement);
+    }
+
+    // Clear existing options
+    valuesList.innerHTML = '';
+
+    // Generate and add new options
+    for (let i = -10; i <= 10; i++) {
+        const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
+        const optionElement = document.createElement('option');
+        optionElement.value = optionValue;
+        
+        valuesList.appendChild(optionElement);
+    }
+
+}
+
 
 
 function updateOptionsSpreadContract() {
@@ -482,6 +520,7 @@ function updateOptionsSpreadContract() {
 document.addEventListener('DOMContentLoaded', function () {
     loadConfig()
     updateMain();
+
 });
 
 function updateMain() {
@@ -559,7 +598,7 @@ function updateMain() {
                         formattedDate = `${monthNames[parseInt(month, 10) - 1]}  ${year}`;
                     }
                     
-                    
+                    tr.setAttribute('trans-id', row.Trans_ID);
 
                     tr.innerHTML = ` 
                     <td class="contractBox">${formattedDate}</td>
@@ -576,12 +615,26 @@ function updateMain() {
                     dataTable.appendChild(tr);
                 });
             });
+        displayDate(date);
+    }
+
+    function displayDate(dateIn) {
+        const dateElement = document.getElementById('current-date');
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        
+        // Create a new Date object and set the time to noon to avoid timezone issues
+        const date = new Date(dateIn);
+        date.setDate(date.getDate() + 1);
+        
+        const formattedDate = date.toLocaleDateString('en-US', options);
+        dateElement.textContent = formattedDate;
     }
 
 
     dateInput.addEventListener('change', function () {
         localStorage.setItem('selectedDate', dateInput.value);
         fetchDataFunction(dateInput.value);
+        displayDate(dateInput.value);
     });
 
     prevButton.addEventListener('click', function () {
@@ -596,15 +649,14 @@ function updateMain() {
         }
     });
 
-    nextButton.addEventListener('click', function () {
+    nextButton.addEventListener('click', async function () {
         document.getElementById('loadImg').style.display = 'block';
-
-
+    
         const originalDate = new Date(dateInput.value);  // Store the original date
         const date = new Date(originalDate);  // Create a new Date object to increment
         date.setDate(date.getDate() + 1);  // Increment the date by 1 day
         const nextdate = date;
-        
+    
         console.log("maxDate", config.maxDate);
         if (nextdate <= new Date(config.maxDate)) {
             const formattedOriginalDate = originalDate.toISOString().split('T')[0];  // Format original date to YYYY-MM-DD
@@ -614,44 +666,83 @@ function updateMain() {
             localStorage.setItem('selectedDate', formattedNextDate);
             fetchDataFunction(formattedNextDate);
     
-            // Call the backend to check pending transactions
-            fetch('/check_pending', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    date: formattedOriginalDate,  // Pass the original date
-                    next_date: formattedNextDate  // Pass the incremented date
-                })
-            })
-            .then(response => response.json())
-            .then(data => {       
+            try {
+                // Call the backend to check pending transactions
+                const response = await fetch('/check_pending', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: formattedOriginalDate,  // Pass the original date
+                        next_date: formattedNextDate  // Pass the incremented date
+                    })
+                });
+    
+                const data = await response.json();
                 console.log(data);
-            })
-            .catch(error => {
+    
+                // Ensure these functions happen in order after the backend call
+                await updateWalletValues();
+                await updateWalletNumber();
+                
+            } catch (error) {
                 console.error('Error:', error);
-            });
+            }
         }
-
-        updateWalletValues();
-        updateWalletNumber();
-
-        //document.getElementById('loadImg').style.display = 'None';
+    
+        document.getElementById('loadImg').style.display = 'none';
     });
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
-        if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought')) {
-            console.log("run1");
-            openCloseModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
+        if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought') && event.target.nextElementSibling.nextElementSibling.nextElementSibling.textContent === 'Purchased') {
+            
+            // Get the current element
+            let currentElement = event.target; //Contract Date
+
+            let parentRow = currentElement.closest('tr');
+            let transID = parentRow.getAttribute('trans-id');
+
+            let currentPrice = currentElement.nextElementSibling.nextElementSibling; // Settle Price
+
+            let type = currentElement.nextElementSibling.nextElementSibling;
+            
+            let qty = type.nextElementSibling;
+            
+            let purchase_price = qty.nextElementSibling.nextElementSibling; 
+                
+            
+            //              contract month,          current date ,         qty,                 purchase price              type           current price    
+            openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, currentPrice.textContent);
+        } else if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought') && event.target.nextElementSibling.nextElementSibling.nextElementSibling.textContent === 'Pending') {
+            if (confirm("Do you want to cancel this transaction?")) {
+                let currentElement = event.target; //Contract Date
+
+                let parentRow = currentElement.closest('tr');
+
+
+                let transID = parentRow.getAttribute('trans-id');
+                
+
+                if (transID.includes('/')) {
+                    const [id1, id2] = transID.split('/');
+                    
+                    console.log("TransID to cancel", id1, id2);
+                    cancelTransaction(id1);
+                    cancelTransaction(id2);
+
+                } else {
+
+                    console.log("TransID to cancel", transID);
+                    cancelTransaction(transID);
+                }
+            }
         } else if (event.target && event.target.classList.contains('contractBox')) {
-            console.log("run2");
-            openModal(event.target.textContent, dateInput.value);
+            openModal(event.target.textContent, event.target.nextElementSibling.textContent, dateInput.value);
         }
     });
 
     
-
     document.getElementById('dataTable').addEventListener('click', function (event) {
         console.log("Click");
         if (event.target.classList.contains('spread') || event.target.classList.contains('spreadRed') || event.target.classList.contains('spreadGreen')) {
@@ -714,4 +805,18 @@ function updateMain() {
     updateWalletValues();
 }
 
+function cancelTransaction(transID) {
+    fetch('/cancelTransaction', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transID: transID }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            updateWalletNumber();
+        });
+}
 updateWalletNumber();
