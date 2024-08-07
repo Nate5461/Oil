@@ -11,7 +11,7 @@
 
     <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
     <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
-    <div id="walletNetliquid" data-wallet-netLiquid="{{ netLiquid }}"></div>
+    <div id="walletMargin" data-wallet-margin="{{ margin }}"></div>
 
     <nav class = "navigation">
         <ul>
@@ -24,8 +24,8 @@
                 <div class="wallet-container">
                     <li><span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
-                        <li><span class="dropLabelNet"> {{ netLiquid }} </span></li>
-                        <li><span class="dropLabelUnrealized"> {{ unrealized }} </span></li>
+                        <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
+                        <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn"onclick=withdrawFunds()>Withdraw</button>
                     </div>
@@ -152,11 +152,11 @@
                 <div class="modal-radio-container">
                     <label class="radio">
                         <input type="radio" id="sbuyRadio" name="contractAction" checked>
-                        <span>Buy</span>  
+                        <span>Buying far month, selling near month</span>  
                     </label>
                     <label class="radio">
                         <input type="radio" id="ssellRadio" name="contractAction">
-                        <span>Sell</span>
+                        <span>Selling far month, buying near month</span>
                     </label>
                 </div>
                     

@@ -1,8 +1,8 @@
 const config = {
     minDate: '1993-06-25',
     maxDate: '2015-12-11',
-    spreadMargin: 0.025,
-    contractMargin: 0.10,
+    spreadMargin: 2000,
+    contractMargin: 6000,
     depositDelay: 3,
     capitalReserve: 0.1,
     marginWarning: 0.1
@@ -21,6 +21,24 @@ function loadConfig() {
 function saveConfig(newConfig) {
     localStorage.setItem('config', JSON.stringify(newConfig));
 }
+
+function giveConfig() {
+    fetch('/giveConfig', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.status);
+        }).catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+window.onload = giveConfig;
 
 function closeModal() {
     const modal = document.getElementById('modal');
@@ -194,7 +212,7 @@ function openModal(contractDate, price, currentDate) {
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
     mPrice.textContent = price;
-    mMargin.textContent = (parseFloat(price) * 1000 * config.contractMargin).toFixed(2);
+    mMargin.textContent = config.contractMargin.toFixed(2);
 
     updateOptionsForContract();
     modal.style.display = 'block';
@@ -225,7 +243,7 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     mPrice.dataset.price1 = price1;
     mPrice.dataset.price2 = price2;
 
-    let marginPrice = parseFloat(price2) * 1000 * config.spreadMargin;
+    let marginPrice = config.spreadMargin;
 
     mMargin.dataset.marginPrice = marginPrice;
     mMargin.textContent = marginPrice.toFixed(2);
@@ -239,6 +257,22 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     modal.style.display = 'block';
 }
 
+function updateWalletValues() {
+    
+    const storedDate = localStorage.getItem('selectedDate');
+    fetch('/getWalletValues', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date: storedDate }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log("we did the vals, ", data.status);
+        })
+        .catch(error => console.error('Error fetching wallet number:', error));
+}
 
 function updateWalletNumber() {
     fetch('/getWallet')
@@ -247,19 +281,21 @@ function updateWalletNumber() {
 
             const walletNumberElement = document.getElementById('walletInfo');
             const walletNumberSpan = document.querySelector('.wallet_number');
-            const netLiquid = document.getElementById('walletNetliquid');
-            const netLiquidSpan = document.querySelector('.dropLabelNet');
+            const margin = document.getElementById('walletMargin');
+            const marginSpan = document.querySelector('.dropLabelMargin');
             const unrealized = document.getElementById('walletUnrealized');
             const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
 
-            const netLiquidInfo = parseFloat(data.netLiquid_info.netLiquid);
+            const marginInfo = parseFloat(data.margin_info.margin);
+
+            //console.log('marginInfo', marginInfo);
             const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
             const walletInfo = parseFloat(data.wallet_info.wallet_number);
 
 
             
-            if (netLiquidSpan && !isNaN(netLiquidInfo)) {
-                netLiquidSpan.textContent = netLiquidInfo.toFixed(2);
+            if (marginSpan && !isNaN(marginInfo)) {
+                marginSpan.textContent = marginInfo.toFixed(2);
             }
             if (unrealizedSpan && !isNaN(unrealizedInfo)) {
                 unrealizedSpan.textContent = unrealizedInfo.toFixed(2);
@@ -271,8 +307,6 @@ function updateWalletNumber() {
         .catch(error => console.error('Error fetching wallet number:', error));
 }
 
-// Also update on page load
-updateWalletNumber();
 
 function withdrawFunds() {
     const amount = parseFloat(prompt('Enter the amount you want to deposit:'));
@@ -360,6 +394,8 @@ function updateOptionsForContract() {
     }
 
 }
+
+
 
 function updateOptionsSpreadContract() {
     const settlePrice = parseFloat(document.getElementById('sPrice').textContent);
@@ -533,6 +569,9 @@ function updateMain() {
                 console.error('Error:', error);
             });
         }
+
+        updateWalletValues();
+        updateWalletNumber();
     });
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
@@ -602,4 +641,7 @@ function updateMain() {
     }
 
     fetchDataFunction(dateInput.value);
+    updateWalletValues();
 }
+
+updateWalletNumber();

@@ -11,7 +11,7 @@
 <body>
     <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
     <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
-    <div id="walletNetliquid" data-wallet-netLiquid="{{ netLiquid }}"></div>
+    <div id="walletMargin" data-wallet-margin="{{ margin }}"></div>
 
     <nav class = "navigation">
         <ul>
@@ -24,8 +24,8 @@
                 <div class="wallet-container">
                     <li><span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
-                        <li><span class="dropLabelNet"> {{ netLiquid }} </span></li>
-                        <li><span class="dropLabelUnrealized"> {{ unrealized }} </span></li>
+                        <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
+                        <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
                     </div>
@@ -61,6 +61,61 @@
                 <!-- Data rows will be inserted here dynamically -->
             </tbody>
         </table>
+    </div>
+
+    <div id="modal">
+        <div class="modal-content">
+            <h2>Contract Actions</h2>
+            <div class="p1_centered">
+                <p id="p1">Contract Date: <span class="contract-date" id="mContractDate"></span> Current Date: <span id="mCurrentDate"></span></p>
+            </div>
+            <div class="modal_prices">
+                <p id="p2">Price: <span id="mPrice"></span></p>
+                <div class="modal-combo">  
+                    <label for="limitInput">Limit Price:</label>
+                    <input type="number" list="limitList" id="limitInput">
+                    <datalist id="limitList">
+                        
+                    </datalist>
+                </div>
+                <div class="modal-combo">
+                    <label for="qtyInput">Quantity:</label>
+                    <input type="number" list="qtyList" name="qtyList" id="qtyInput">
+                    <datalist id="qtyList">
+                        <option value=1>
+                        <option value=2>
+                        <option value=3>
+                        <option value=4>
+                        <option value=5>
+                        <option value=6>
+                        <option value=7>
+                        <option value=8>
+                        <option value=9>
+                        <option value=10>
+                    </datalist>
+                </div>
+            </div>
+            <div class="margin_price">
+                <p id="p3">Margin Price: <span id="marginPrice"></span></p>
+            </div>
+            <div class="modal-input-container">
+                <div class="modal-radio-container">
+                    <label class="radio">
+                        <input type="radio" id="buyRadio" name="contractAction" checked>
+                        <span>Buy</span>  
+                    </label>
+                    <label class="radio">
+                        <input type="radio" id="sellRadio" name="contractAction">
+                        <span>Sell</span>
+                    </label>
+                </div>
+                    
+            </div>
+            <div class="modal-buttons-container">
+                <button class="modalButton" onclick="changeContract()">Submit</button>
+                <button class="modalButton" onclick="closeModal()">Close</button>
+            </div>
+        </div>
     </div>
     
     <script src="static/scripts.js"></script>
