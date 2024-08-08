@@ -225,8 +225,8 @@ function closeContract() {
 }
 
 
-function openCloseModal(contractDate, currentDate, qty, purchase_price, type, currentPrice) {
-    console.log(contractDate, currentDate, qty, purchase_price, type);
+function openCloseModal(contractDate, currentDate, qty, purchase_price, type, transID) {
+    console.log(contractDate, currentDate, qty, purchase_price, type, transID);
 
 
     
@@ -269,26 +269,29 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, cu
 
     //Need function for actually closing
 
-    //How do we differ spread vs straight contract?
-    if (contractDate.includes('/')) {
-        const [month1, month2] = contractDate.split('/');
-        const year = currentDate.split(' ')[1];
-        let contractDate1 = month1 + '-' + year
+    if (transID.includes('/')) {
+        const [id1, id2] = transID.split('/');
         
-        //Going to need if statement for jan-dec spreads
-        let contractDate2 = month2 + '-' + year;
+        console.log("TransID's", id1, id2);
+        
+        mCloseDate.dataset.transID1 = id1;
+        mCloseDate.dataset.transID2 = id2;
+        mCloseDate.dataset.qty = qty;
+        mCloseDate.dataset.limitPrice = selectedLimitPrice;
 
-        
-        closeContract();
     } else {
-        closeSpreadContract();
+
+        mCloseDate.dataset.transID1 = transID;
+        mCloseDate.dataset.transID2 = 'none';
+        mCloseDate.dataset.qty = qty;
+        mCloseDate.dataset.limitPrice = selectedLimitPrice;
     }
     modal.style.display = 'block';
 }
 
 
-function closeSpreadContract() {
-
+function closeContract() {
+    
 }
 
 function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
@@ -567,6 +570,7 @@ function updateMain() {
                     dataTable.appendChild(tr);
                 });
             });
+        displayDate(date);
     }
 
     function fetchBought(date) {
@@ -631,10 +635,14 @@ function updateMain() {
     }
 
 
-    dateInput.addEventListener('change', function () {
+    dateInput.addEventListener('change', async function () {
+        document.getElementById('loadImg').style.display = 'block';
         localStorage.setItem('selectedDate', dateInput.value);
         fetchDataFunction(dateInput.value);
         displayDate(dateInput.value);
+        await updateWalletValues();
+        await updateWalletNumber();
+        document.getElementById('loadImg').style.display = 'none';
     });
 
     prevButton.addEventListener('click', function () {
@@ -703,6 +711,7 @@ function updateMain() {
             let parentRow = currentElement.closest('tr');
             let transID = parentRow.getAttribute('trans-id');
 
+            
             let currentPrice = currentElement.nextElementSibling.nextElementSibling; // Settle Price
 
             let type = currentElement.nextElementSibling.nextElementSibling;
@@ -711,9 +720,9 @@ function updateMain() {
             
             let purchase_price = qty.nextElementSibling.nextElementSibling; 
                 
-            
-            //              contract month,          current date ,         qty,                 purchase price              type           current price    
-            openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, currentPrice.textContent);
+
+            //              contract month,          current date ,         qty,                 purchase price              type         transID   
+            openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, transID);
         } else if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought') && event.target.nextElementSibling.nextElementSibling.nextElementSibling.textContent === 'Pending') {
             if (confirm("Do you want to cancel this transaction?")) {
                 let currentElement = event.target; //Contract Date
@@ -819,4 +828,3 @@ function cancelTransaction(transID) {
             updateWalletNumber();
         });
 }
-updateWalletNumber();

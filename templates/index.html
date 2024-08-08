@@ -21,6 +21,7 @@
                 <li><a href="/stats">Stats</a></li>
             </div>
             <div class="right-container">
+                <div class="loader" id="loadImg"></div>
                 <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
                 <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li> 
                 <div class="wallet-container">
@@ -37,7 +38,7 @@
     </nav>
     
     <div class="container">
-        <h2>Select a current date:</h2>
+        <h2>Select a current date: <span id = "current-date"></span></h2>
         <input type="date" id="dateInput" class="date-selector">
         <div class="buttons">
             <button id="prevButton">&lt;</button>
