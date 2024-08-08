@@ -75,8 +75,8 @@ function buySpread() {
         var type1 = 'sell';
         var type2 = 'buy';
     } else {
-        var type1 = 'sell';
-        var type2 = 'buy';
+        var type1 = 'buy';
+        var type2 = 'sell';
     }
 
 
@@ -174,30 +174,6 @@ function buyContract() {
         });
 }
 
-function sellContract() {
-
-    var contractDate = document.getElementById('mContractDate').textContent;
-    var price = document.getElementById('mPrice').textContent;
-    var currentDate = document.getElementById('mCurrentDate').textContent;
-
-    fetch('/sell', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            contractDate: contractDate,
-            type: 'sell',
-            price: price,
-            currentDate: currentDate
-        }),
-    })
-        .then(response => response.json())
-        .then(data => {
-            alert(data.message);
-        });
-}
-
 
 
 function openModal(contractDate, price, currentDate) {
@@ -222,12 +198,63 @@ function openModal(contractDate, price, currentDate) {
 
 function closeContract() {
 
+    let transID1 = document.getElementById('mContractDate').dataset.transID1;
+    let transID2 = document.getElementById('mContractDate').dataset.transID2;
+    let qty = document.getElementById('mContractDate').dataset.qty;
+
+    let limitPrice = document.getElementById('mContractDate').dataset.limitPrice;
+    let current_price = document.getElementById('mContractDate').dataset.currentPrice;
+    let profit = document.getElementById('mContractDate').dataset.profit;
+
+    console.log(document.getElementById('mContractDate').dataset);
+    console.log("TransID's", transID1, qty, limitPrice , current_price, profit);
+
+    if (current_price === limitPrice) {
+        fetch ('/closeContract', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                transID1: transID1,
+                transID2: transID2,
+                qty: qty,
+                limitQty: qty,
+                profit: profit
+            })
+        }).then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            closeModal();
+        });
+
+    } else {
+        fetch ('/limitClose', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                transID1: transID1,
+                transID2: transID2,
+                qty: qty,
+                limitQty: qty,
+                limitPrice: limitPrice,
+                profit: profit
+            })
+        }).then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            closeModal();
+        });
+    }
+
+
 }
 
 
-function openCloseModal(contractDate, currentDate, qty, purchase_price, type, transID) {
-    console.log(contractDate, currentDate, qty, purchase_price, type, transID);
-
+function openCloseModal(contractDate, currentDate, qty, purchase_price, type, transID, current_price) {
+    console.log(contractDate, currentDate, qty, purchase_price, type, transID, current_price);
 
     
     const modal = document.getElementById('modal');
@@ -238,9 +265,14 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     const mQty = document.getElementById('qtyInput');
     const mLimit = document.getElementById('limitInput');
 
+    const mQtyA = document.getElementById('mQtyA');
+
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
     mPrice.textContent = purchase_price;
+    mQtyA.textContent = qty;
+    mQty.value = qty;
+    mLimit.value = '';
 
     updateOptionsForCloseContract(qty);
 
@@ -252,9 +284,12 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
         const selectedQty = parseInt(mQty.value);
         const selectedLimitPrice = parseFloat(mLimit.value);
 
+
         if (!isNaN(selectedQty) && !isNaN(selectedLimitPrice)) {
             const profit = calculateProfit(selectedQty, selectedLimitPrice, purchase_price, type);
             mProfit.textContent = profit.toFixed(2);
+            mCloseDate.dataset.profit = profit;
+            mCloseDate.dataset.limitPrice = selectedLimitPrice;
         }
     }
 
@@ -269,29 +304,41 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
 
     //Need function for actually closing
 
-    if (transID.includes('/')) {
-        const [id1, id2] = transID.split('/');
+    if (transID.includes(',')) {
+        console.log("runs", transID);
+        const [id1, id2] = transID.split(',');
         
         console.log("TransID's", id1, id2);
         
         mCloseDate.dataset.transID1 = id1;
         mCloseDate.dataset.transID2 = id2;
         mCloseDate.dataset.qty = qty;
-        mCloseDate.dataset.limitPrice = selectedLimitPrice;
+        
+        if (!isNaN(parseInt(mQty.value))) {
+            mCloseDate.dataset.limitQty = parseInt(mQty.value);
+        } else {
+            mCloseDate.dataset.limitQty = 'none';
+        }
+        
+
+        mCloseDate.dataset.currentPrice = parseFloat(current_price);
 
     } else {
-
+        console.log("runs not", transID);
         mCloseDate.dataset.transID1 = transID;
         mCloseDate.dataset.transID2 = 'none';
         mCloseDate.dataset.qty = qty;
-        mCloseDate.dataset.limitPrice = selectedLimitPrice;
+
+        if (!isNaN(parseInt(mQty.value))) {
+            mCloseDate.dataset.limitQty = parseInt(mQty.value);
+        } else {
+            mCloseDate.dataset.limitQty = 'none';
+        }
+        
+
+        mCloseDate.dataset.currentPrice = parseFloat(current_price);
     }
     modal.style.display = 'block';
-}
-
-
-function closeContract() {
-    
 }
 
 function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
@@ -335,6 +382,7 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
 
 async function updateWalletValues() {
     const storedDate = localStorage.getItem('selectedDate');
+    console.log("storedDate", storedDate);
     try {
         const response = await fetch('/getWalletValues', {
             method: 'POST',
@@ -349,11 +397,15 @@ async function updateWalletValues() {
         console.error('Error fetching wallet values:', error);
     }
 
+    await updateWalletNumber();
+
     document.getElementById('loadImg').style.display = 'none';
 }
 
 async function updateWalletNumber() {
     try {
+
+
         const response = await fetch('/getWallet');
         const data = await response.json();
 
@@ -645,7 +697,9 @@ function updateMain() {
         document.getElementById('loadImg').style.display = 'none';
     });
 
-    prevButton.addEventListener('click', function () {
+    prevButton.addEventListener('click', async function () {
+        
+        document.getElementById('loadImg').style.display = 'block';
         const date = new Date(dateInput.value);
         date.setDate(date.getDate() - 1);
 
@@ -654,7 +708,14 @@ function updateMain() {
             dateInput.value = date.toISOString().split('T')[0];
             localStorage.setItem('selectedDate', dateInput.value);
             fetchDataFunction(dateInput.value);
+
+            await updateWalletValues();
+            await updateWalletNumber();
+
+            displayDate(dateInput.value);
         }
+
+        document.getElementById('loadImg').style.display = 'none';
     });
 
     nextButton.addEventListener('click', async function () {
@@ -714,15 +775,15 @@ function updateMain() {
             
             let currentPrice = currentElement.nextElementSibling.nextElementSibling; // Settle Price
 
-            let type = currentElement.nextElementSibling.nextElementSibling;
+            let type = currentElement.nextElementSibling.nextElementSibling.nextElementSibling.nextElementSibling;
             
             let qty = type.nextElementSibling;
             
             let purchase_price = qty.nextElementSibling.nextElementSibling; 
                 
 
-            //              contract month,          current date ,         qty,                 purchase price              type         transID   
-            openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, transID);
+            //              contract month,          current date ,         qty,                 purchase price              type         transID       current price
+            openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, transID, currentPrice.textContent);
         } else if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought') && event.target.nextElementSibling.nextElementSibling.nextElementSibling.textContent === 'Pending') {
             if (confirm("Do you want to cancel this transaction?")) {
                 let currentElement = event.target; //Contract Date
