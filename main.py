@@ -1,6 +1,6 @@
 import pandas as pd
 import sqlite3
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
 from flask_caching import Cache
 from flaskwebgui import FlaskUI
 from waitress import serve
@@ -11,16 +11,18 @@ import numpy as np
 
 app = Flask(__name__)
 
-app.config['CACHE_TYPE'] = 'simple'
-cache = Cache(app)
-
 script_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(script_dir, 'oil_data.sqlite')
 template_dir = os.path.join(script_dir, 'templates')
 
 app.template_folder = template_dir
 
-@cache.cached(timeout=50)
+def no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 def fetch_oil():
     conn = sqlite3.connect(db_path)
     query = "SELECT * FROM mstrOil"  
@@ -70,7 +72,7 @@ def get_wallet_number():
         'margin_info': margin
     }
 
-    return jsonify(response)
+    return no_cache(jsonify(response))
 
 def fetch_bought():
     conn = sqlite3.connect(db_path)
@@ -119,7 +121,7 @@ def restart():
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE wallet SET amount = 0.0")
+        cursor.execute("UPDATE wallet SET amount = 0.0, unrealized = 0.0, margin = 0.0")
         cursor.execute("DELETE FROM transactions")
         conn.commit()
         return jsonify({"message": "Restart successful"}), 200
@@ -128,36 +130,52 @@ def restart():
 
 @app.route('/data', methods=['POST'])
 def get_data():
-    selected_date = request.json['date']
-    data = fetch_oil()
+    try:
+        selected_date = request.json['date']
+        data = fetch_oil()
+        
+        # Convert date columns to datetime
+        data['CurrentDate'] = pd.to_datetime(data['CurrentDate']).dt.date
+        data['CloseDate'] = pd.to_datetime(data['CloseDate']).dt.date
+        
+        selected_current_date = pd.to_datetime(selected_date).date()
+
+        # Filter data
+        filtered_data = data[(data['CurrentDate'] <= selected_current_date) & (data['CloseDate'] >= selected_current_date)]
+
+        # Process data
+        filtered_data = filtered_data.sort_values(['CloseDate', 'CurrentDate'], ascending=[True, False])
+        filtered_data['Change'] = 0.0
+        last_prices = filtered_data[filtered_data['CurrentDate'] < selected_current_date].groupby('CloseDate')['Settlement Price'].first().reset_index()
+        filtered_data = filtered_data.merge(last_prices, on='CloseDate', how='left', suffixes=('', '_LastBeforeSelected'))
+        filtered_data.loc[filtered_data['CurrentDate'] == selected_current_date, 'Change'] = (filtered_data['Settlement Price'] - filtered_data['Settlement Price_LastBeforeSelected']).round(2)
+        filtered_data['percent_change'] = (filtered_data['Change'] / filtered_data['Settlement Price'] * 100).round(2)
+        filtered_data = filtered_data.drop_duplicates(subset='CloseDate')
+        filtered_data = filtered_data.sort_values('CloseDate', ascending=True)
+        filtered_data['Next Settlement Price'] = filtered_data['Settlement Price'].shift(1)
+        filtered_data['Spread'] = (filtered_data['Settlement Price'] - filtered_data['Next Settlement Price']).fillna(0).round(2)
+
+        filtered_data['CloseDate'] = filtered_data['CloseDate'].astype(str)
+        # Prepare response
+
+        response_data = filtered_data[['CloseDate', 'Settlement Price', 'Change', 'percent_change', 'Spread']].to_dict(orient='records')
+        safe_data = replace_nan(response_data)
+        
+        return jsonify(safe_data)
     
-    # Convert date columns to datetime
-    data['CurrentDate'] = pd.to_datetime(data['CurrentDate']).dt.date
-    data['CloseDate'] = pd.to_datetime(data['CloseDate']).dt.date
+    except Exception as e:
+        response_data = {"error": str(e)}
+        print(response_data)
+        return jsonify(response_data)
     
-    selected_current_date = pd.to_datetime(selected_date).date()
-
-    # Filter data
-    filtered_data = data[(data['CurrentDate'] <= selected_current_date) & (data['CloseDate'] >= selected_current_date)]
-
-    # Process data
-    filtered_data = filtered_data.sort_values(['CloseDate', 'CurrentDate'], ascending=[True, False])
-    filtered_data['Change'] = 0.0
-    last_prices = filtered_data[filtered_data['CurrentDate'] < selected_current_date].groupby('CloseDate')['Settlement Price'].first().reset_index()
-    filtered_data = filtered_data.merge(last_prices, on='CloseDate', how='left', suffixes=('', '_LastBeforeSelected'))
-    filtered_data.loc[filtered_data['CurrentDate'] == selected_current_date, 'Change'] = (filtered_data['Settlement Price'] - filtered_data['Settlement Price_LastBeforeSelected']).round(2)
-    filtered_data['percent_change'] = (filtered_data['Change'] / filtered_data['Settlement Price'] * 100).round(2)
-    filtered_data = filtered_data.drop_duplicates(subset='CloseDate')
-    filtered_data = filtered_data.sort_values('CloseDate', ascending=True)
-    filtered_data['Next Settlement Price'] = filtered_data['Settlement Price'].shift(1)
-    filtered_data['Spread'] = (filtered_data['Settlement Price'] - filtered_data['Next Settlement Price']).fillna(0).round(2)
-
-    filtered_data['CloseDate'] = filtered_data['CloseDate'].astype(str)
-    # Prepare response
-
-    response_data = filtered_data[['CloseDate', 'Settlement Price', 'Change', 'percent_change', 'Spread']].to_dict(orient='records')
-
-    return jsonify(response_data)
+def replace_nan(obj):
+        if isinstance(obj, float) and obj != obj:  # NaN check
+            return None
+        if isinstance(obj, dict):
+            return {k: replace_nan(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [replace_nan(i) for i in obj]
+        return obj
 
 @app.route('/bought', methods=['GET'])
 def bought():
@@ -212,7 +230,6 @@ def get_single_profit():
     profit = limit - df['purchase_price'].values[0]
 
 
-
 @app.route('/check_pending', methods=['POST'])
 def check_pending():
     data = request.json
@@ -223,10 +240,13 @@ def check_pending():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Pending' AND trans_date <= ? AND contract_date >= ?", (current_date, current_date))
+    #fetch relevent data
+    cursor.execute("SELECT * FROM transactions WHERE trans_date <= ? AND contract_date >= ?", (current_date, current_date))
     pending_data = cursor.fetchall()
 
     df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
+    
+
     grouped = df.groupby(['type', 'contract_date'])
 
     buy_groups = {}
@@ -245,6 +265,8 @@ def check_pending():
         for sell_contract_date, sell_group in sell_groups.items():
             sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
 
+
+            #BUY SPREAD
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
                (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12):
                
@@ -255,6 +277,7 @@ def check_pending():
                     sell_row = sell_group.iloc[i]
 
                     if buy_row['trans_date'] == sell_row['trans_date']:
+                        
                         curr_buy_price = fetch_settlePrice(current_date, buy_row['contract_date'])
                         curr_sell_price = fetch_settlePrice(current_date, sell_row['contract_date'])
                         next_buy_price = fetch_settlePrice(next_date, buy_row['contract_date'])
@@ -262,20 +285,53 @@ def check_pending():
                         current_settle = round(curr_buy_price - curr_sell_price, 4)
                         next_settle = round(next_buy_price - next_sell_price, 4)
 
+                        if buy_row['status'] == 'Pending' or sell_row['status'] == 'Pending':
                         
-                        if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
-                            update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
-                            try:
+                            if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
+                                update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                                try:
+                                    
+                                    cursor.execute(update_query, (next_date, float(next_sell_price + buy_row['limit_price']), int(buy_row['Trans_ID'])))
+                                    cursor.execute(update_query, (next_date, float(next_sell_price), int(sell_row['Trans_ID'])))
+                                    conn.commit()
+                                except Exception as e:
+                                    print("Error:", e)
+
+                            processed_contract_dates.add(buy_row['Trans_ID'])
+                            processed_contract_dates.add(sell_row['Trans_ID'])
+
+                        elif buy_row['close_qty'] != None:
+                            # Lookijng for close outs
+
+                            print("buy_row['close_limit']", buy_row['close_limit'], "current_settle", current_settle, "next_settle", next_settle)
+                            if (buy_row['close_limit'] >= current_settle and buy_row['close_limit'] <= next_settle) or (buy_row['close_limit'] <= current_settle and buy_row['close_limit'] >= next_settle):
+                                print("I run1")
+                                curs = cursor.execute("SELECT amount FROM wallet")
+                                curr = float(curs.fetchone()[0])
+                                newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
+                                cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+
                                 
-                                cursor.execute(update_query, (next_date, float(next_sell_price + buy_row['limit_price']), int(buy_row['Trans_ID'])))
-                                cursor.execute(update_query, (next_date, float(next_sell_price), int(sell_row['Trans_ID'])))
-                                conn.commit()
-                            except Exception as e:
-                                print("Error:", e)
+                                try:
+                                    if int(buy_row['close_qty']) == int(buy_row['qty']):
+                                       
+                                        print("deleting, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+                                        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
+                                        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
+                                        
+                                        conn.commit()
+                                        conn.close()
+                                    else:
 
-                        processed_contract_dates.add(buy_row['Trans_ID'])
-                        processed_contract_dates.add(sell_row['Trans_ID'])
-
+                                        print("updating, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+                                        cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty']), int(buy_row['Trans_ID'])))
+                                        cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty']), int(sell_row['Trans_ID'])))
+                                        conn.commit()
+                                        
+                                        conn.close()
+                                except Exception as e:
+                                    print("Error:", e)
+            #SELL SPREAD
             elif (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
                  (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
                 
@@ -284,48 +340,126 @@ def check_pending():
                     buy_row = buy_group.iloc[i]
                     sell_row = sell_group.iloc[i]
 
+                    
                     if buy_row['trans_date'] == sell_row['trans_date']:
-                        curr_buy_price = fetch_settlePrice(current_date, buy_row['contract_date'])
-                        curr_sell_price = fetch_settlePrice(current_date, sell_row['contract_date'])
-                        next_buy_price = fetch_settlePrice(next_date, buy_row['contract_date'])
-                        next_sell_price = fetch_settlePrice(next_date, sell_row['contract_date'])
-                        current_settle = round(curr_sell_price - curr_buy_price, 4)
-                        next_settle = round(next_sell_price - next_buy_price, 4)
 
                         
-                        if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
-                            update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
-                            try:
-                                
-                                cursor.execute(update_query, (next_date, float(next_buy_price), int(buy_row['Trans_ID'])))
-                                cursor.execute(update_query, (next_date, float(next_buy_price + buy_row['limit_price']), int(sell_row['Trans_ID'])))
-                                conn.commit()
-                            except Exception as e:
-                                print("Error:", e)
+                        if buy_row['status'] == 'Pending' and sell_row['status'] == 'Pending':
+                            curr_buy_price = fetch_settlePrice(current_date, buy_row['contract_date'])
+                            curr_sell_price = fetch_settlePrice(current_date, sell_row['contract_date'])
+                            next_buy_price = fetch_settlePrice(next_date, buy_row['contract_date'])
+                            next_sell_price = fetch_settlePrice(next_date, sell_row['contract_date'])
+                            current_settle = round(curr_sell_price - curr_buy_price, 4)
+                            next_settle = round(next_sell_price - next_buy_price, 4)
 
-                        processed_contract_dates.add(buy_row['Trans_ID'])
-                        processed_contract_dates.add(sell_row['Trans_ID'])
+                            
+                            if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
+                                update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                                try:
+                                    
+                                    cursor.execute(update_query, (next_date, float(next_buy_price), int(buy_row['Trans_ID'])))
+                                    cursor.execute(update_query, (next_date, float(next_buy_price + buy_row['limit_price']), int(sell_row['Trans_ID'])))
+                                    conn.commit()
+                                except Exception as e:
+                                    print("Error:", e)
 
+                            processed_contract_dates.add(buy_row['Trans_ID'])
+                            processed_contract_dates.add(sell_row['Trans_ID'])
+                    
+                        elif buy_row['close_qty'] != None and sell_row['close_qty'] != None:
+                            # Looking for close outs
+                            if (buy_row['close_limit'] >= current_settle and buy_row['close_limit'] <= next_settle) or (buy_row['close_limit'] <= current_settle and buy_row['close_limit'] >= next_settle):
+                                    
+                                    curs = cursor.execute("SELECT amount FROM wallet")
+                                    curr = float(curs.fetchone()[0])
+                                    newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
+                                    
+                                    cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                                    if buy_row['close_qty'] == buy_row['qty']:
+                                        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
+                                        cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
+                                    else:
+                                        print("I run2", buy_row['qty'] - buy_row['close_qty'], buy_row['Trans_ID'])
+                                        cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty'])), int(buy_row['Trans_ID']))
+                                        cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty'])), int(sell_row['Trans_ID']))
+
+                                    conn.commit()
+
+                                    # Check if the transactions were actually deleted or updated
+                                    cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (buy_row['Trans_ID'],))
+                                    buy_row_check = cursor.fetchone()
+                                    print(f"After operation, buy_row with Trans_ID {buy_row['Trans_ID']}: {buy_row_check}")
+
+                                    cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (sell_row['Trans_ID'],))
+                                    sell_row_check = cursor.fetchone()
+                                    print(f"After operation, sell_row with Trans_ID {sell_row['Trans_ID']}: {sell_row_check}")
+
+
+    #Buying
+
+    print(processed_contract_dates)
     for contract_date, group in buy_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
-                curr_price = fetch_settlePrice(current_date, row['contract_date'])
-                next_price = fetch_settlePrice(next_date, row['contract_date'])
-                if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
-                    update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
-                    cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
-                    conn.commit()
+                if row['status'] == 'Pending':
+                    curr_price = fetch_settlePrice(current_date, row['contract_date'])
+                    next_price = fetch_settlePrice(next_date, row['contract_date'])
+                    if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
+                        update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                        cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
+                        conn.commit()
+                elif row['close_qty'] != None:
+                    # Look for close outs
 
+                    
+                    curr_price = float(fetch_settlePrice(current_date, row['contract_date']))
+                    next_price = float(fetch_settlePrice(next_date, row['contract_date']))
+                    print("curr_price", curr_price, "next_price", next_price)
+                    print("row['close_limit']", row['close_limit'], "row['purchase_price']", row['purchase_price'], "row['close_qty']", row['close_qty'])
+
+                    if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
+                        
+                        print('ran the buy section')
+                        curs = cursor.execute("SELECT amount FROM wallet")
+                        curr = float(curs.fetchone()[0])
+                        newcurr = curr + (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
+                        cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                        if row['close_qty'] == row['qty']:
+                            cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
+                        else:
+                            cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(row['qty']) - int(row['close_qty']), int(row['Trans_ID'])))
+                        conn.commit()
+
+    #Selling                      
     for contract_date, group in sell_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
-                curr_price = fetch_settlePrice(current_date, row['contract_date'])
-                next_price = fetch_settlePrice(next_date, row['contract_date'])
-                if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
-                    update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
-                    cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
-                    conn.commit()
 
+                if row['status'] == 'Pending':
+                    curr_price = fetch_settlePrice(current_date, row['contract_date'])
+                    next_price = fetch_settlePrice(next_date, row['contract_date'])
+                    if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
+                        update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                        cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
+                        conn.commit()
+                elif row['close_qty'] != None:
+                    # Look for close outs
+                    print('Ran hereeee')
+                    curr_price = fetch_settlePrice(current_date, row['contract_date'])
+                    next_price = fetch_settlePrice(next_date, row['contract_date'])
+                    if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
+                        
+                        print('got hereeee')
+                        curs = cursor.execute("SELECT amount FROM wallet")
+                        curr = float(curs.fetchone()[0])
+                        newcurr = curr - (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
+
+                        cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                        if row['close_qty'] == row['qty']:
+                            cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
+                        else:
+                            cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(row['qty']) - int(row['close_qty']), int(row['Trans_ID'])))
+                        conn.commit()
     conn.close()
     return jsonify("Pending transactions checked")
 
@@ -344,8 +478,10 @@ def getSpreadMargin():
 
 @app.route('/getWalletValues', methods=['POST'])
 def update_wallet():
-    print("update_wallet_values please")
+    #print("update_wallet_values please")
     data = request.json
+    print(data)
+    print(data['date'])
     current_date = pd.to_datetime(data['date']).date()
     
     # Open database connection once
@@ -358,6 +494,14 @@ def update_wallet():
     
     cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ?", (current_date,))
     transactions = cursor.fetchall()
+
+    print("transactions", transactions)
+    if not transactions:
+        cursor.execute("UPDATE wallet SET unrealized = 0.0, margin = 0.0")
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    
     
     # Fetch oil data
     oil_data = fetch_oil()
@@ -412,21 +556,14 @@ def update_wallet():
     cursor.execute("UPDATE wallet SET margin = ?", (margin,))
     conn.commit()
     
-    print("Margin", margin)
-    
     temp = 0
 
-    print("transactions", transactions)
     for transaction in transactions:
         contract_date = pd.to_datetime(transaction[2]).date()
         
-        print("contract_date", contract_date)
-        print("current_date", current_date)
         filtered_data = oil_data[oil_data['CloseDate'] == contract_date]
         
         filtered_data = filtered_data[filtered_data['CurrentDate'] == current_date]
-
-        print("filtered_data", filtered_data)
 
         #Get the closest date if the current date is not found
         if filtered_data.empty:
@@ -435,30 +572,30 @@ def update_wallet():
                 closest_date = filtered_data['CurrentDate'].max()
                 filtered_data = filtered_data[filtered_data['CurrentDate'] == closest_date]
         
-        print("filtered_data", filtered_data)
         
         if not filtered_data.empty:
             settle_price = filtered_data['Settlement Price'].values[0]
 
             if transaction[7] == 'buy':
-                print ("buy", settle_price, transaction[8], transaction[3])
+                
                 temp += (settle_price - transaction[8]) * transaction[3] * 1000
             else:
-                print ("sell", settle_price, transaction[8], transaction[3])
+                
                 temp -= (settle_price - transaction[8]) * transaction[3] * 1000
     
-    print("temp", temp)
+    
     cursor.execute("UPDATE wallet SET unrealized = ?", (temp,))
     conn.commit()
     
     wallet_amount = wallet[0][0]
     wallet_margin = wallet[0][1]
     
-    if wallet_amount - temp - wallet_margin < 0:
-        print("Margin call")
+    if wallet_amount <= abs(temp - wallet_margin):
+        cost = round(wallet_amount + (temp - wallet_margin), 2)
+        return jsonify({'message': 'margin call', 'margin_info': cost}), 200
     
     conn.close()
-    return jsonify({'status': 'success'})
+    return jsonify({'message': 'success'})
 
 @app.route('/buyContract', methods=['POST'])
 def buy_contract():
@@ -475,25 +612,20 @@ def buy_contract():
         mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
         mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
 
-        print(type(data['transactionDate']))
-        print(type(data['contractDate']))
-        print(mstrOil.dtypes)
 
         price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
 
-        print("we have price", price)
 
         #THis will never happen for spreads currently
-        if float(data['limitPrice']) == float(price):
+        if data['immediate']:
             purchase_date = data['transactionDate']
             status = 'Purchased'
-            purchase_price = price
+            purchase_price = data['trans_price']
         else:
             purchase_date = None
             status = 'Pending'
             purchase_price = None
 
-        print("About to execute")
 
         cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type, purchase_price, trans_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                        (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type'], purchase_price, data['trans_price']))
@@ -526,6 +658,9 @@ def bought_data():
     selected_date = request.json['date']
     data = fetch_bought()
     mstrOil = fetch_oil()
+    
+    if data.empty:
+        return jsonify([])
     
     # Convert date columns to datetime
     data['contract_date'] = pd.to_datetime(data['contract_date']).dt.date
@@ -589,7 +724,7 @@ def bought_data():
 
             # Check if the months are exactly one month apart
 
-            # buying the close month selling the next month (less common)
+            # buying the close month selling the next month (less common) SELL SPREAD
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
             (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12):
               
@@ -735,7 +870,7 @@ def bought_data():
         x['purchase_date'] if x['purchase_date'] is not pd.NaT else pd.Timestamp.max
     ))
 
-    return jsonify(response_data)
+    return no_cache(jsonify(response_data))
 
 @app.route('/cancelTransaction', methods=['POST'])
 def cancel_transaction():
@@ -767,13 +902,16 @@ def cancel_transaction():
 @app.route('/closeContract', methods=['POST'])     
 def close_contract():
     print("closeContract")
-    data = request.json
-    id1 = data['transID1']
-    id2 = data['transID2']
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    qty = data['qty']
-    limitQty = data['limitQty']
+
+    data = request.json
+    id1 = int(data['transID1'])
+    id2 = data['transID2']
+    qty = int(data['qty'])
+    limitQty = int(data['limitQty'])
+
+    print(data)
     if limitQty == qty:
 
         if id2 == 'none':
@@ -785,6 +923,7 @@ def close_contract():
             conn.commit()
             conn.close()
         else:
+            id2 = int(id2)
             cursor.execute("Delete from transactions where Trans_ID = ?", (id1,))
             cursor.execute("Delete from transactions where Trans_ID = ?", (id2,))
             cursor.execute("Select amount FROM wallet")
@@ -798,6 +937,7 @@ def close_contract():
     elif limitQty < qty:
 
         if id2 == 'none':
+            print("this should be running")
             cursor.execute("Select amount FROM wallet")
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
@@ -825,17 +965,19 @@ def limit_close():
     id1 = data['transID1']
     id2 = data['transID2']
     
+    
     if id2 == 'none':
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (data['limitQty'], data['limitPrice'], id1))
+        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
+        print("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
         conn.commit()
         conn.close()   
     else:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (data['limitQty'], data['limitPrice'], id1))
-        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (data['limitQty'], data['limitPrice'], id2))
+        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
+        cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id2)))
         conn.commit()
         conn.close()
     return jsonify({"message": "Limit close set"}), 200

@@ -80,6 +80,10 @@ function buySpread() {
     }
 
 
+    if (wallet < unrealized - (margin + (qty * config.spreadMargin))) {
+        alert('You do not have enough funds in your account to cover the margin');
+        return;
+    }
     console.log(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, qty, limitPrice, type1, type2);
 
     
@@ -97,7 +101,8 @@ function buySpread() {
             status: 'pending',
             purchaseDate: null,
             type: type1,
-            trans_price: price1
+            trans_price: price1,
+            immediate: spreadPrice === limitPrice
         }),
     })
         .then(response => response.json())
@@ -118,7 +123,8 @@ function buySpread() {
                     status: 'pending',
                     purchaseDate: null,
                     type: type2,
-                    trans_price: price2
+                    trans_price: price2,
+                    immediate: spreadPrice === limitPrice
                 }),
             });
         })
@@ -141,12 +147,23 @@ function buyContract() {
     var qty = document.getElementById('qtyInput').value;
     var limitPrice = document.getElementById('limitInput').value;
 
+    var wallet = parseFloat(document.getElementById('walletInfo').getAttribute('data-wallet-number'));
+    var unrealized = parseFloat(document.getElementById('walletUnrealized').getAttribute('data-wallet-unrealized'));
+    var margin = parseFloat(document.getElementById('walletMargin').getAttribute('data-wallet-margin'));
+
+
     if (document.getElementById('buyRadio').checked) {
         var type = 'buy';
     } else {
         var type = 'sell';
     }
 
+    console.log("wallet", wallet, "unrealized", unrealized, "margin", margin, "qty", qty, "config", config.contractMargin);
+    console.log((margin + (qty * config.contractMargin)));
+    if (wallet <= Math.abs(unrealized - (margin + (qty * config.contractMargin)))) {
+        alert('You do not have enough funds in your account to cover the margin');
+        return;
+    }
 
     console.log(contractDate, price, currentDate, qty, limitPrice, type);
 
@@ -163,7 +180,8 @@ function buyContract() {
             status: 'pending',
             purchaseDate: null,
             type: type,
-            trans_price: price
+            trans_price: price,
+            immediate: price === limitPrice
         }),
     })
         .then(response => response.json())
@@ -205,7 +223,8 @@ function closeContract() {
     let limitPrice = document.getElementById('mContractDate').dataset.limitPrice;
     let current_price = document.getElementById('mContractDate').dataset.currentPrice;
     let profit = document.getElementById('mContractDate').dataset.profit;
-
+    let limitQty = document.getElementById('mContractDate').dataset.limitQty;
+    
     console.log(document.getElementById('mContractDate').dataset);
     console.log("TransID's", transID1, qty, limitPrice , current_price, profit);
 
@@ -219,16 +238,19 @@ function closeContract() {
                 transID1: transID1,
                 transID2: transID2,
                 qty: qty,
-                limitQty: qty,
+                limitQty: limitQty,
                 profit: profit
             })
         }).then(response => response.json())
         .then(data => {
-            console.log(data.message);
+            console.log("date", localStorage.getItem('selectedDate'));
+            fetchDataFunction(localStorage.getItem('selectedDate'));
             closeModal();
         });
 
     } else {
+        console.log("Ran here");
+        console.log("TransID 1", transID1, "TransID 2", transID2, "qty", qty, "lim qty", limitQty, "lim price", limitPrice, "Profit", profit);
         fetch ('/limitClose', {
             method: 'POST',
             headers: {
@@ -238,17 +260,18 @@ function closeContract() {
                 transID1: transID1,
                 transID2: transID2,
                 qty: qty,
-                limitQty: qty,
+                limitQty: limitQty,
                 limitPrice: limitPrice,
                 profit: profit
             })
         }).then(response => response.json())
         .then(data => {
-            console.log(data.message);
+            fetchDataFunction(localStorage.getItem('selectedDate'));
             closeModal();
         });
     }
 
+    updateWalletValues();
 
 }
 
@@ -264,7 +287,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     const mProfit = document.getElementById('mProfit');
     const mQty = document.getElementById('qtyInput');
     const mLimit = document.getElementById('limitInput');
-
+    const mCurrPrice = document.getElementById('mCurrPrice');
     const mQtyA = document.getElementById('mQtyA');
 
     mCloseDate.textContent = contractDate;
@@ -273,6 +296,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     mQtyA.textContent = qty;
     mQty.value = qty;
     mLimit.value = '';
+    mCurrPrice.textContent = current_price;
 
     updateOptionsForCloseContract(qty);
 
@@ -290,6 +314,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
             mProfit.textContent = profit.toFixed(2);
             mCloseDate.dataset.profit = profit;
             mCloseDate.dataset.limitPrice = selectedLimitPrice;
+            mCloseDate.dataset.limitQty = selectedQty;
         }
     }
 
@@ -313,14 +338,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
         mCloseDate.dataset.transID1 = id1;
         mCloseDate.dataset.transID2 = id2;
         mCloseDate.dataset.qty = qty;
-        
-        if (!isNaN(parseInt(mQty.value))) {
-            mCloseDate.dataset.limitQty = parseInt(mQty.value);
-        } else {
-            mCloseDate.dataset.limitQty = 'none';
-        }
-        
-
+    
         mCloseDate.dataset.currentPrice = parseFloat(current_price);
 
     } else {
@@ -392,6 +410,9 @@ async function updateWalletValues() {
             body: JSON.stringify({ date: storedDate }),
         });
         const data = await response.json();
+        if (data.message === 'margin call') {
+            alert('You have received a margin call. Please deposit funds to cover the margin amount of ' + data.margin_info);
+        }
         console.log("we did the vals, ", data.status);
     } catch (error) {
         console.error('Error fetching wallet values:', error);
@@ -452,7 +473,7 @@ function withdrawFunds() {
             .then(response => response.json())
             .then(data => {
                 console.log(data.message);
-                updateWalletNumber();
+                getWalletValues();
             });
     }
 }
@@ -578,6 +599,121 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 
+function fetchDataFunction(date) {
+    const currentPath = window.location.pathname;
+    if (currentPath.includes('/bought')) {
+        console.log("fetching bought", date);
+        fetchBought(date);
+    } else {
+        console.log("fetching data", date);
+        fetchData(date);
+    }
+}
+
+function fetchData(date) {
+    
+    fetch('/data', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date: date }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        
+        const tbody = document.querySelector('#dataTable tbody');
+        tbody.innerHTML = ''; // Clear only the tbody
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+
+            // Manually parse the date string
+            const [year, month] = row.CloseDate.split('-');
+            const monthNames = ["January", "February", "March", "April", "May", "June",
+                                "July", "August", "September", "October", "November", "December"];
+            const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
+            
+            
+            tr.innerHTML = ` 
+                <td class="contractBox">${formattedDate}</td>
+                <td>${row['Settlement Price']}</td>
+                <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
+                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
+                <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${row.Spread}</td>
+            `;
+            tbody.appendChild(tr); // Append to tbody
+        });
+    }).catch(error => {
+        console.error('Error:', error);
+    });
+    displayDate(date);
+}
+
+function fetchBought(date) {
+    fetch('/boughtData', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date: date }),
+    }).then(response => response.json())
+        .then(data => {
+
+            const tbody = document.querySelector('#dataTable tbody');
+            tbody.innerHTML = ''; // Clear only the tbody
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                const monthNames = ["January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December"];
+                
+                let formattedDate;
+                if (row.contract_date.includes('/')) {
+                    const [con1, con2] = row.contract_date.split('/');
+
+                    const [year1, month1] = con1.split('-');
+                    const [year2, month2] = con2.split('-');
+                    formattedDate = `${monthNames[parseInt(month1, 10) - 1]}/${monthNames[parseInt(month2, 10) - 1]}  ${year1}`;
+                } else {
+                    const [year, month] = row.contract_date.split('-');
+                    formattedDate = `${monthNames[parseInt(month, 10) - 1]}  ${year}`;
+                }
+                
+                tr.setAttribute('trans-id', row.Trans_ID);
+
+                tr.innerHTML = ` 
+                <td class="contractBox">${formattedDate}</td>
+                <td>${row.limit_price}</td>
+                <td>${row['settle_price']}</td>
+                <td>${row.status}</td>
+                <td>${row.type}</td>
+                <td>${row.qty}</td>
+                <td>${row.purchase_date}</td>
+                <td>${row.purchase_price}</td>
+                <td class="${row.change < 0 ? 'red' : row.change > 0 ? 'green' : ''}">${row.change}</td>
+                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
+            `;
+                tbody.appendChild(tr); // Append to tbody
+            });
+        });
+    displayDate(date);
+}
+
+function displayDate(dateIn) {
+    const dateElement = document.getElementById('current-date');
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    
+    // Create a new Date object and set the time to noon to avoid timezone issues
+    const date = new Date(dateIn);
+    date.setDate(date.getDate() + 1);
+    
+    const formattedDate = date.toLocaleDateString('en-US', options);
+    dateElement.textContent = formattedDate;
+}
+
+
 function updateMain() {
     const dateInput = document.getElementById('dateInput');
     const prevButton = document.getElementById('prevButton');
@@ -587,105 +723,8 @@ function updateMain() {
     dateInput.min = config.minDate;
     dateInput.max = config.maxDate;
 
-    const currentPath = window.location.pathname;
-    const fetchDataFunction = currentPath.includes('/bought') ? fetchBought : fetchData;
 
-    function fetchData(date) {
-        fetch('/data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ date: date }),
-        })
-            .then(response => response.json())
-            .then(data => {
-                
-                dataTable.innerHTML = '';
-                data.forEach(row => {
-                    const tr = document.createElement('tr');
-
-                    // Manually parse the date string
-                    const [year, month] = row.CloseDate.split('-');
-                    const monthNames = ["January", "February", "March", "April", "May", "June",
-                                        "July", "August", "September", "October", "November", "December"];
-                    const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
-                    
-
-                    tr.innerHTML = ` 
-                    <td class="contractBox">${formattedDate}</td>
-                    <td>${row['Settlement Price']}</td>
-                    <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
-                    <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                    <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${row.Spread}</td>
-                `;
-                    dataTable.appendChild(tr);
-                });
-            });
-        displayDate(date);
-    }
-
-    function fetchBought(date) {
-        fetch('/boughtData', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ date: date }),
-        }).then(response => response.json())
-            .then(data => {
-                dataTable.innerHTML = '';
-                data.forEach(row => {
-                    const tr = document.createElement('tr');
-                    
-                    const monthNames = ["January", "February", "March", "April", "May", "June",
-                        "July", "August", "September", "October", "November", "December"];
-                    
-                    let formattedDate;
-                    if (row.contract_date.includes('/')) {
-
-                        const [con1, con2] = row.contract_date.split('/');
-
-                        const [year1, month1] = con1.split('-');
-                        const [year2, month2] = con2.split('-');
-                        formattedDate = `${monthNames[parseInt(month1, 10) - 1]}/${monthNames[parseInt(month2, 10) - 1]}  ${year1}`;
-                    } else {
-                        const [year, month] = row.contract_date.split('-');
-                        formattedDate = `${monthNames[parseInt(month, 10) - 1]}  ${year}`;
-                    }
-                    
-                    tr.setAttribute('trans-id', row.Trans_ID);
-
-                    tr.innerHTML = ` 
-                    <td class="contractBox">${formattedDate}</td>
-                    <td>${row.limit_price}</td>
-                    <td>${row['settle_price']}</td>
-                    <td>${row.status}</td>
-                    <td>${row.type}</td>
-                    <td>${row.qty}</td>
-                    <td>${row.purchase_date}</td>
-                    <td>${row.purchase_price}</td>
-                    <td class="${row.change < 0 ? 'red' : row.change > 0 ? 'green' : ''}">${row.change}</td>
-                    <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                `;
-                    dataTable.appendChild(tr);
-                });
-            });
-        displayDate(date);
-    }
-
-    function displayDate(dateIn) {
-        const dateElement = document.getElementById('current-date');
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        
-        // Create a new Date object and set the time to noon to avoid timezone issues
-        const date = new Date(dateIn);
-        date.setDate(date.getDate() + 1);
-        
-        const formattedDate = date.toLocaleDateString('en-US', options);
-        dateElement.textContent = formattedDate;
-    }
-
+    
 
     dateInput.addEventListener('change', async function () {
         document.getElementById('loadImg').style.display = 'block';
@@ -720,47 +759,59 @@ function updateMain() {
 
     nextButton.addEventListener('click', async function () {
         document.getElementById('loadImg').style.display = 'block';
-    
-        const originalDate = new Date(dateInput.value);  // Store the original date
-        const date = new Date(originalDate);  // Create a new Date object to increment
-        date.setDate(date.getDate() + 1);  // Increment the date by 1 day
-        const nextdate = date;
-    
-        console.log("maxDate", config.maxDate);
-        if (nextdate <= new Date(config.maxDate)) {
-            const formattedOriginalDate = originalDate.toISOString().split('T')[0];  // Format original date to YYYY-MM-DD
-            const formattedNextDate = nextdate.toISOString().split('T')[0];  // Format next date to YYYY-MM-DD
-    
-            dateInput.value = formattedNextDate;  // Update the date input value
-            localStorage.setItem('selectedDate', formattedNextDate);
-            fetchDataFunction(formattedNextDate);
-    
-            try {
-                // Call the backend to check pending transactions
-                const response = await fetch('/check_pending', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        date: formattedOriginalDate,  // Pass the original date
-                        next_date: formattedNextDate  // Pass the incremented date
-                    })
-                });
-    
-                const data = await response.json();
-                console.log(data);
-    
-                // Ensure these functions happen in order after the backend call
-                await updateWalletValues();
-                await updateWalletNumber();
-                
-            } catch (error) {
-                console.error('Error:', error);
+        try {
+            const originalDateStr = dateInput.value;  // Get the original date string
+            const originalDate = new Date(originalDateStr + 'T00:00:00');  // Parse the date string to avoid time zone issues
+            console.log("originalDate", originalDate);
+
+            // Extract year, month, and day components
+            const year = originalDate.getFullYear();
+            const month = originalDate.getMonth();
+            const day = originalDate.getDate();
+
+            // Create a new date object with the incremented day
+            const nextdate = new Date(year, month, day + 1);
+            console.log("nextdate", nextdate);
+
+            console.log("maxDate", config.maxDate);
+            if (nextdate <= new Date(config.maxDate)) {
+                console.log("we made it here");
+                const formattedOriginalDate = originalDate.toISOString().split('T')[0];  // Format original date to YYYY-MM-DD
+                const formattedNextDate = nextdate.toISOString().split('T')[0];  // Format next date to YYYY-MM-DD
+
+                dateInput.value = formattedNextDate;  // Update the date input value
+                localStorage.setItem('selectedDate', formattedNextDate);
+
+                try {
+                    // Call the backend to check pending transactions
+                    const response = await fetch('/check_pending', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            date: formattedOriginalDate,  // Pass the original date
+                            next_date: formattedNextDate  // Pass the incremented date
+                        })
+                    });
+
+                    const data = await response.json();
+                    console.log("sending", formattedNextDate);
+                    fetchDataFunction(formattedNextDate);
+
+                    // Ensure these functions happen in order after the backend call
+                    await updateWalletValues();
+                    await updateWalletNumber();
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                }
             }
+
+            document.getElementById('loadImg').style.display = 'none';
+        } catch (error) {
+            console.error('Error:', error);
         }
-    
-        document.getElementById('loadImg').style.display = 'none';
     });
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
@@ -869,6 +920,7 @@ function updateMain() {
         
     } else {
         dateInput.value = config.maxDate;
+        localStorage.setItem('selectedDate', config.maxDate);
     }
 
     fetchDataFunction(dateInput.value);
