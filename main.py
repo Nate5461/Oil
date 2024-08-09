@@ -5,7 +5,7 @@ from flask_caching import Cache
 from flaskwebgui import FlaskUI
 from waitress import serve
 from threading import Thread
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import numpy as np
 
@@ -239,6 +239,8 @@ def check_pending():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+    
+    next3days = next_date + timedelta(days=3)
 
     #fetch relevent data
     cursor.execute("SELECT * FROM transactions WHERE trans_date <= ? AND contract_date >= ?", (current_date, current_date))
@@ -492,7 +494,7 @@ def update_wallet():
     cursor.execute("SELECT * FROM wallet")
     wallet = cursor.fetchall()
     
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ?", (current_date,))
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ? AND contract_date >= ?", (current_date, current_date))
     transactions = cursor.fetchall()
 
     print("transactions", transactions)
@@ -815,11 +817,20 @@ def bought_data():
     lone_data = []
     print(processed_contract_dates)
 
+    # Buying
     for contract_date, group in buy_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
                 # Convert purchase_price to float, handle empty strings
                 purchase_price = float(row['purchase_price']) if row['purchase_price'] else 0
+                
+                if purchase_price == 0:
+                    buy_change = 0
+                    buy_percent = 0
+                else:
+                    buy_change = round(row['settle_price'] - purchase_price, 2)
+                    buy_percent = round((row['settle_price'] - purchase_price) / purchase_price * 100, 2)
+                
                 lone_contract = {
                     'contract_date': row['contract_date'],
                     'settle_price': row['settle_price'],
@@ -828,18 +839,28 @@ def bought_data():
                     'purchase_date': row['purchase_date'],
                     'status': row['status'],
                     'purchase_price': row['purchase_price'],
-                    'change': row['change'],
-                    'percent_change': row['percent_change'],
+                    'change': buy_change,
+                    'percent_change': buy_percent,
                     'qty': row['qty'],
                     'Trans_ID': row['Trans_ID']
                 }
                 lone_data.append(lone_contract)
 
-    for Trans_ID, group in sell_groups.items():
+    # Selling
+    for contract_date, group in sell_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
                 # Convert purchase_price to float, handle empty strings
                 purchase_price = float(row['purchase_price']) if row['purchase_price'] else 0
+
+                if purchase_price == 0:
+                    sell_change = 0
+                    sell_percent = 0
+                else:
+                    sell_change = round(purchase_price - row['settle_price'], 2)
+                    sell_percent = round((purchase_price - row['settle_price']) / purchase_price * 100, 2)
+                
+
                 lone_contract = {
                     'contract_date': row['contract_date'],
                     'settle_price': row['settle_price'],
@@ -848,8 +869,8 @@ def bought_data():
                     'purchase_date': row['purchase_date'],
                     'status': row['status'],
                     'purchase_price': row['purchase_price'],
-                    'change': row['change'],
-                    'percent_change': row['percent_change'],
+                    'change': sell_change,
+                    'percent_change': sell_percent,
                     'qty': row['qty'],
                     'Trans_ID': row['Trans_ID']
                 }
@@ -991,6 +1012,6 @@ if __name__ == '__main__':
     server_thread.daemon = True
     server_thread.start()
     
-    app.run()
-    #FlaskUI(app=app, server="flask").run()
+    #app.run()
+    FlaskUI(app=app, server="flask").run()
 

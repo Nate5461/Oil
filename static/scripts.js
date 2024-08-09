@@ -132,6 +132,7 @@ function buySpread() {
         .then(data => {
             console.log('Second fetch response:', data);
             alert(data.message);
+            closeSpreadModal();
         })
         .catch(error => {
             console.error('Error:', error);
@@ -596,9 +597,33 @@ function updateOptionsSpreadContract() {
 document.addEventListener('DOMContentLoaded', function () {
     loadConfig()
     updateMain();
-
+    colourChange();
 });
 
+function colourChange() {
+    // Change font color based on value
+    const unrealizedElement = document.querySelector('.dropLabelUnrealized');
+    const walletElement = document.querySelector('.wallet_number');
+
+    if (unrealizedElement) {
+        const unrealizedValue = parseFloat(unrealizedElement.textContent.trim());
+        if (unrealizedValue < 0) {
+            console.log("negative");
+            unrealizedElement.classList.add('negative');
+        } else {
+            unrealizedElement.classList.add('positive');
+        }
+    }
+
+    if (walletElement) {
+        const walletValue = parseFloat(walletElement.textContent.trim());
+        if (walletValue < 0) {
+           walletElement.classList.add('negative');
+        } else {
+            walletElement.classList.add('positive');
+        }
+    }
+}
 function fetchDataFunction(date) {
     const currentPath = window.location.pathname;
     if (currentPath.includes('/bought')) {
@@ -699,6 +724,7 @@ function fetchBought(date) {
             });
         });
     displayDate(date);
+    colourChange();
 }
 
 function displayDate(dateIn) {
@@ -802,6 +828,7 @@ function updateMain() {
                     // Ensure these functions happen in order after the backend call
                     await updateWalletValues();
                     await updateWalletNumber();
+                    colourChange();
                     
                 } catch (error) {
                     console.error('Error:', error);

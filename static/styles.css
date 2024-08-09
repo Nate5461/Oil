@@ -216,6 +216,13 @@ h2 {
   box-shadow: rgba(60, 64, 67, .3) 0 1px 3px 0, rgba(60, 64, 67, .15) 0 4px 8px 3px;
 }
 
+.positive {
+    color: rgb(41, 255, 77);
+}
+.negative {
+    color: rgb(247, 74, 74);
+}
+
 .modalButtonCon {
   align-items: center;
   appearance: none;
@@ -427,8 +434,11 @@ h2 {
   display: flex;
 }
 
+.wallet-container .margin_price {
+  color: rgb(255, 255, 255);
+}
+
 .wallet-container .wallet_number {
-  color: yellow;
   text-align: center;
   padding: 14px 16px;
   text-decoration: none;
