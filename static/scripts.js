@@ -79,14 +79,25 @@ function buySpread() {
         var type2 = 'sell';
     }
 
+    var wallet = parseFloat(document.getElementById('walletInfo').getAttribute('data-wallet-number'));
+    var unrealized = parseFloat(document.getElementById('walletUnrealized').getAttribute('data-wallet-unrealized'));
+    var margin = parseFloat(document.getElementById('walletMargin').getAttribute('data-wallet-margin'));
 
-    if (wallet < unrealized - (margin + (qty * config.spreadMargin))) {
+    
+
+
+    if (wallet <= Math.abs(unrealized - (margin + (qty * config.spreadMargin)))) {
         alert('You do not have enough funds in your account to cover the margin');
         return;
     }
-    console.log(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, qty, limitPrice, type1, type2);
 
-    
+
+    console.log(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, qty, limitPrice, type1, type2);
+    console.log("hi")
+
+    temp = Math.round(parseFloat(spreadPrice), 3) - Math.round(parseFloat(limitPrice), 3);
+    //console.log("temp", temp);
+
     // First fetch with contractDate
     fetch('/buyContract', {
         method: 'POST',
@@ -102,12 +113,12 @@ function buySpread() {
             purchaseDate: null,
             type: type1,
             trans_price: price1,
-            immediate: spreadPrice === limitPrice
+            immediate: temp === 0
         }),
     })
         .then(response => response.json())
         .then(data => {
-            console.log('First fetch response:', data);
+            //console.log('First fetch response:', data);
 
             // Second fetch with contractDate1
             return fetch('/buyContract', {
@@ -124,13 +135,14 @@ function buySpread() {
                     purchaseDate: null,
                     type: type2,
                     trans_price: price2,
-                    immediate: spreadPrice === limitPrice
+                    immediate: temp === 0
                 }),
             });
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Second fetch response:', data);
+            //console.log('Second fetch response:', data);
+            updateWalletValues();
             alert(data.message);
             closeSpreadModal();
         })
@@ -159,14 +171,14 @@ function buyContract() {
         var type = 'sell';
     }
 
-    console.log("wallet", wallet, "unrealized", unrealized, "margin", margin, "qty", qty, "config", config.contractMargin);
-    console.log((margin + (qty * config.contractMargin)));
+    //console.log("wallet", wallet, "unrealized", unrealized, "margin", margin, "qty", qty, "config", config.contractMargin);
+    //console.log((margin + (qty * config.contractMargin)));
     if (wallet <= Math.abs(unrealized - (margin + (qty * config.contractMargin)))) {
         alert('You do not have enough funds in your account to cover the margin');
         return;
     }
 
-    console.log(contractDate, price, currentDate, qty, limitPrice, type);
+    //console.log(contractDate, price, currentDate, qty, limitPrice, type);
 
     fetch('/buyContract', {
         method: 'POST',
@@ -187,8 +199,11 @@ function buyContract() {
     })
         .then(response => response.json())
         .then(data => {
+            updateWalletValues();
+
             closeModal();
             closeSpreadModal();
+
             alert(data.message);
         });
 }
@@ -202,12 +217,13 @@ function openModal(contractDate, price, currentDate) {
     const mCurrDate = document.getElementById('mCurrentDate');
     const mPrice = document.getElementById('mPrice');
     const mMargin = document.getElementById('marginPrice');
-
+    const mLimit = document.getElementById('limitInput');
 
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
     mPrice.textContent = price;
     mMargin.textContent = config.contractMargin.toFixed(2);
+    mLimit.value = price;
 
     updateOptionsForContract();
     modal.style.display = 'block';
@@ -226,8 +242,8 @@ function closeContract() {
     let profit = document.getElementById('mContractDate').dataset.profit;
     let limitQty = document.getElementById('mContractDate').dataset.limitQty;
     
-    console.log(document.getElementById('mContractDate').dataset);
-    console.log("TransID's", transID1, qty, limitPrice , current_price, profit);
+    //console.log(document.getElementById('mContractDate').dataset);
+    //console.log("TransID's", transID1, qty, limitPrice , current_price, profit);
 
     if (current_price === limitPrice) {
         fetch ('/closeContract', {
@@ -244,14 +260,15 @@ function closeContract() {
             })
         }).then(response => response.json())
         .then(data => {
-            console.log("date", localStorage.getItem('selectedDate'));
+            //console.log("date", localStorage.getItem('selectedDate'));
             fetchDataFunction(localStorage.getItem('selectedDate'));
+            
             closeModal();
         });
 
     } else {
-        console.log("Ran here");
-        console.log("TransID 1", transID1, "TransID 2", transID2, "qty", qty, "lim qty", limitQty, "lim price", limitPrice, "Profit", profit);
+        //console.log("Ran here");
+        //console.log("TransID 1", transID1, "TransID 2", transID2, "qty", qty, "lim qty", limitQty, "lim price", limitPrice, "Profit", profit);
         fetch ('/limitClose', {
             method: 'POST',
             headers: {
@@ -268,6 +285,7 @@ function closeContract() {
         }).then(response => response.json())
         .then(data => {
             fetchDataFunction(localStorage.getItem('selectedDate'));
+            
             closeModal();
         });
     }
@@ -278,7 +296,7 @@ function closeContract() {
 
 
 function openCloseModal(contractDate, currentDate, qty, purchase_price, type, transID, current_price) {
-    console.log(contractDate, currentDate, qty, purchase_price, type, transID, current_price);
+    //console.log(contractDate, currentDate, qty, purchase_price, type, transID, current_price);
 
     
     const modal = document.getElementById('modal');
@@ -296,10 +314,13 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     mPrice.textContent = purchase_price;
     mQtyA.textContent = qty;
     mQty.value = qty;
-    mLimit.value = '';
     mCurrPrice.textContent = current_price;
 
     updateOptionsForCloseContract(qty);
+
+    mLimit.value = current_price;
+
+    calculateAndDisplayProfit();
 
     // Add event listeners to combo boxes
     mQty.addEventListener('change', calculateAndDisplayProfit);
@@ -321,8 +342,10 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
 
     function calculateProfit(qty, limitPrice, purchasePrice, type) {
         if (type === 'buy') {
+            limitPrice = parseFloat(limitPrice);
             return (limitPrice - purchasePrice) * qty * 1000;
         } else{
+            limitPrice = parseFloat(limitPrice);
             return (purchasePrice - limitPrice) * qty * 1000;
         }
         
@@ -331,10 +354,10 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     //Need function for actually closing
 
     if (transID.includes(',')) {
-        console.log("runs", transID);
+        //console.log("runs", transID);
         const [id1, id2] = transID.split(',');
         
-        console.log("TransID's", id1, id2);
+        //console.log("TransID's", id1, id2);
         
         mCloseDate.dataset.transID1 = id1;
         mCloseDate.dataset.transID2 = id2;
@@ -343,7 +366,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
         mCloseDate.dataset.currentPrice = parseFloat(current_price);
 
     } else {
-        console.log("runs not", transID);
+        //console.log("runs not", transID);
         mCloseDate.dataset.transID1 = transID;
         mCloseDate.dataset.transID2 = 'none';
         mCloseDate.dataset.qty = qty;
@@ -361,7 +384,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
 }
 
 function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPrice, currentDate) {
-    console.log("vals", contractDate, spreadPrice, currentDate);
+    //console.log("vals", contractDate, spreadPrice, currentDate);
 
     const modal = document.getElementById('modal-spread');
     const mCloseDate = document.getElementById('sContractDate');
@@ -401,7 +424,7 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
 
 async function updateWalletValues() {
     const storedDate = localStorage.getItem('selectedDate');
-    console.log("storedDate", storedDate);
+    //console.log("storedDate", storedDate);
     try {
         const response = await fetch('/getWalletValues', {
             method: 'POST',
@@ -414,7 +437,7 @@ async function updateWalletValues() {
         if (data.message === 'margin call') {
             alert('You have received a margin call. Please deposit funds to cover the margin amount of ' + data.margin_info);
         }
-        console.log("we did the vals, ", data.status);
+        //console.log("we did the vals, ", data.status);
     } catch (error) {
         console.error('Error fetching wallet values:', error);
     }
@@ -437,18 +460,39 @@ async function updateWalletNumber() {
         const marginSpan = document.querySelector('.dropLabelMargin');
         const unrealized = document.getElementById('walletUnrealized');
         const unrealizedSpan = document.querySelector('.dropLabelUnrealized');
+        const excess = document.getElementById('walletExcess');
+        const excessSpan = document.querySelector('.dropLabelExcess');
+
 
         const marginInfo = parseFloat(data.margin_info.margin);
         const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
         const walletInfo = parseFloat(data.wallet_info.wallet_number);
+        const excessInfo = parseFloat(data.excess_info.excess);
+        
+        if (excessSpan && !isNaN(excessInfo)) {
+            if (excess) {
+                excess.setAttribute('data-wallet-excess', excessInfo.toFixed(2));
+            }
+            excessSpan.textContent = excessInfo.toFixed(2);
+        }
 
         if (marginSpan && !isNaN(marginInfo)) {
+            if (margin) {
+                margin.setAttribute('data-wallet-margin', marginInfo.toFixed(2));
+            }
             marginSpan.textContent = marginInfo.toFixed(2);
+            
         }
         if (unrealizedSpan && !isNaN(unrealizedInfo)) {
+            if (unrealized) {
+                unrealized.setAttribute('data-wallet-unrealized', unrealizedInfo.toFixed(2));
+            }
             unrealizedSpan.textContent = unrealizedInfo.toFixed(2);
         }
         if (walletNumberSpan && !isNaN(walletInfo)) {
+            if (walletNumberElement) {
+                walletNumberElement.setAttribute('data-wallet-number', walletInfo.toFixed(2));
+            }
             walletNumberSpan.textContent = walletInfo.toFixed(2);
         }
     } catch (error) {
@@ -458,7 +502,7 @@ async function updateWalletNumber() {
 
 
 function withdrawFunds() {
-    const amount = parseFloat(prompt('Enter the amount you want to deposit:'));
+    const amount = parseFloat(prompt('Enter the amount you want to withdraw:'));
     const wallet_number = parseFloat(document.getElementById('walletInfo').dataset.walletNumber);
 
     if (amount > wallet_number) {
@@ -474,7 +518,7 @@ function withdrawFunds() {
             .then(response => response.json())
             .then(data => {
                 console.log(data.message);
-                getWalletValues();
+                updateWalletNumber();
             });
     }
 }
@@ -527,8 +571,8 @@ function restart() {
 function updateOptionsForContract() {
     const settlePrice = parseFloat(document.getElementById('mPrice').textContent);
     const valuesList = document.getElementById('limitList');
-    //const inputField = document.getElementById('limitInput');
-
+    const inputField = document.getElementById('limitInput');
+    inputField.value = settlePrice;
 
     // Clear existing options
     valuesList.innerHTML = '';
@@ -542,12 +586,15 @@ function updateOptionsForContract() {
         valuesList.appendChild(optionElement);
     }
 
+    inputField.value = settlePrice;
+
 }
 
 function updateOptionsForCloseContract(qty) {
     const settlePrice = parseFloat(document.getElementById('mPrice').textContent);
     const valuesList = document.getElementById('limitList');
-    
+    const limitInput = document.getElementById('limitInput');
+
     const qtyList = document.getElementById('qtyList');
     qtyList.innerHTML = '';
 
@@ -568,6 +615,7 @@ function updateOptionsForCloseContract(qty) {
         
         valuesList.appendChild(optionElement);
     }
+
 
 }
 
@@ -627,10 +675,10 @@ function colourChange() {
 function fetchDataFunction(date) {
     const currentPath = window.location.pathname;
     if (currentPath.includes('/bought')) {
-        console.log("fetching bought", date);
+        //console.log("fetching bought", date);
         fetchBought(date);
     } else {
-        console.log("fetching data", date);
+        //console.log("fetching data", date);
         fetchData(date);
     }
 }
@@ -659,13 +707,17 @@ function fetchData(date) {
                                 "July", "August", "September", "October", "November", "December"];
             const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
             
+            const formattedSettlementPrice = parseFloat(row['Settlement Price']).toFixed(2);
+            const formattedChange = parseFloat(row.Change).toFixed(2);
+            const formattedPercentChange = parseFloat(row.percent_change).toFixed(2);
+            const formattedSpread = parseFloat(row.Spread).toFixed(2);
             
             tr.innerHTML = ` 
                 <td class="contractBox">${formattedDate}</td>
-                <td>${row['Settlement Price']}</td>
-                <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${row.Change}</td>
-                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
-                <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${row.Spread}</td>
+                <td>${formattedSettlementPrice}</td>
+                <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${formattedChange}</td>
+                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${formattedPercentChange}</td>
+                <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${formattedSpread}</td>
             `;
             tbody.appendChild(tr); // Append to tbody
         });
@@ -707,18 +759,22 @@ function fetchBought(date) {
                 }
                 
                 tr.setAttribute('trans-id', row.Trans_ID);
+                
+                const formattedSettlementPrice = parseFloat(row.settle_price).toFixed(2);
+                const formattedChange = parseFloat(row.change).toFixed(2);
+                const formattedPercentChange = parseFloat(row.percent_change).toFixed(2);
 
                 tr.innerHTML = ` 
                 <td class="contractBox">${formattedDate}</td>
                 <td>${row.limit_price}</td>
-                <td>${row['settle_price']}</td>
+                <td>${formattedSettlementPrice}</td>
                 <td>${row.status}</td>
                 <td>${row.type}</td>
                 <td>${row.qty}</td>
                 <td>${row.purchase_date}</td>
                 <td>${row.purchase_price}</td>
-                <td class="${row.change < 0 ? 'red' : row.change > 0 ? 'green' : ''}">${row.change}</td>
-                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${row.percent_change}</td>
+                <td class="${row.change < 0 ? 'red' : row.change > 0 ? 'green' : ''}">${formattedChange}</td>
+                <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${formattedPercentChange}</td>
             `;
                 tbody.appendChild(tr); // Append to tbody
             });

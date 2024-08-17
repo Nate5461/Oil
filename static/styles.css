@@ -446,7 +446,7 @@ h2 {
 }
 
 .right-container li:hover {
-  background-color: #111;
+  background-color: #b4b4b465;
 }
 
 .dropdown-menu {
@@ -499,10 +499,20 @@ h2 {
 
 .right-container li {
   display: block;
-  color: rgb(252, 93, 93);
+  color: rgb(0, 0, 0);
   text-align: center;
   padding: 14px 16px;
   text-decoration: none;
+  font-size: 20px;
+}
+
+.dropLabelMargin {
+  color: rgb(223, 54, 54);
+  font-size: 20px;
+}
+
+.dropLabelExcess {
+  color: rgb(41, 255, 77);
   font-size: 20px;
 }
 
@@ -517,6 +527,6 @@ h2 {
 }
 
 .navigation li a:hover {
-    background-color: #111;
+    background-color: #b4b4b465;
 }
 

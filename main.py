@@ -8,13 +8,20 @@ from threading import Thread
 from datetime import datetime, timedelta
 import os
 import numpy as np
+import math
 
 app = Flask(__name__)
 
+
+home_dir = os.path.expanduser("~/Downloads/oilapp")
+db_dir = os.path.join(home_dir, 'oilapp')
+os.makedirs(db_dir, exist_ok=True)
+#db_path = os.path.join(db_dir, 'oil_data.sqlite')
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(script_dir, 'oil_data.sqlite')
-template_dir = os.path.join(script_dir, 'templates')
 
+template_dir = os.path.join(script_dir, 'templates')
 app.template_folder = template_dir
 
 def no_cache(response):
@@ -24,6 +31,7 @@ def no_cache(response):
     return response
 
 def fetch_oil():
+    #print(f"Database path: {db_path}")
     conn = sqlite3.connect(db_path)
     query = "SELECT * FROM mstrOil"  
     data = pd.read_sql(query, conn)
@@ -32,6 +40,7 @@ def fetch_oil():
 
 @app.context_processor
 def inject_wallet_number():
+    #print(f"Database path: {db_path}")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT amount FROM wallet")
@@ -55,21 +64,38 @@ def inject_margin():
     cursor = conn.cursor()
     cursor.execute("SELECT margin FROM wallet")
     margin = cursor.fetchone()[0]
-    print("margin", margin)
+    #print("margin", margin)
     conn.close()
     return dict(margin=margin)
 
+@app.context_processor
+def inject_excess():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM wallet")
+    data = cursor.fetchall()
+    wallet = data[0][0]
+    unrealized = data[0][2]
+    margin = data[0][1]
+    #print("wallet", wallet, "unrealized", unrealized, "margin", margin)
+    #print("excess", wallet + unrealized - margin)
+    excess = wallet + unrealized - margin
+    
+    conn.close()
+    return dict(excess=excess)
 
 @app.route('/getWallet', methods=['GET'])
 def get_wallet_number():
     wallet_info = inject_wallet_number()
     unrealized = inject_unrealized()
     margin = inject_margin()
+    excess = inject_excess()
 
     response = {
         'wallet_info': wallet_info,
         'unrealized_info': unrealized,
-        'margin_info': margin
+        'margin_info': margin,
+        'excess_info': excess
     }
 
     return no_cache(jsonify(response))
@@ -161,15 +187,16 @@ def get_data():
         response_data = filtered_data[['CloseDate', 'Settlement Price', 'Change', 'percent_change', 'Spread']].to_dict(orient='records')
         safe_data = replace_nan(response_data)
         
+        
         return jsonify(safe_data)
     
     except Exception as e:
         response_data = {"error": str(e)}
-        print(response_data)
+        #print(response_data)
         return jsonify(response_data)
     
 def replace_nan(obj):
-        if isinstance(obj, float) and obj != obj:  # NaN check
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj) and obj < 0):  # NaN check
             return None
         if isinstance(obj, dict):
             return {k: replace_nan(v) for k, v in obj.items()}
@@ -249,23 +276,23 @@ def check_pending():
     df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
     
 
-    grouped = df.groupby(['type', 'contract_date'])
+    grouped = df.groupby(['type', 'Trans_ID'])
 
     buy_groups = {}
     sell_groups = {}
 
-    for (type_, contract_date), group in grouped:
+    for (type_, trans_id), group in grouped:
         if type_ == 'buy':
-            buy_groups[contract_date] = group
+            buy_groups[trans_id] = group
         elif type_ == 'sell':
-            sell_groups[contract_date] = group
+            sell_groups[trans_id] = group
 
     processed_contract_dates = set()
 
-    for buy_contract_date, buy_group in buy_groups.items():
-        buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
-        for sell_contract_date, sell_group in sell_groups.items():
-            sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
+    for trans_id, buy_group in buy_groups.items():
+        buy_date = datetime.strptime(buy_group.iloc[0]['contract_date'], '%Y-%m-%d')
+        for trans_id, sell_group in sell_groups.items():
+            sell_date = datetime.strptime(sell_group.iloc[0]['contract_date'], '%Y-%m-%d')
 
 
             #BUY SPREAD
@@ -277,6 +304,7 @@ def check_pending():
                 for i in range(min_length):
                     buy_row = buy_group.iloc[i]
                     sell_row = sell_group.iloc[i]
+                    
 
                     if buy_row['trans_date'] == sell_row['trans_date']:
                         
@@ -305,9 +333,9 @@ def check_pending():
                         elif buy_row['close_qty'] != None:
                             # Lookijng for close outs
 
-                            print("buy_row['close_limit']", buy_row['close_limit'], "current_settle", current_settle, "next_settle", next_settle)
+                            #print("buy_row['close_limit']", buy_row['close_limit'], "current_settle", current_settle, "next_settle", next_settle)
                             if (buy_row['close_limit'] >= current_settle and buy_row['close_limit'] <= next_settle) or (buy_row['close_limit'] <= current_settle and buy_row['close_limit'] >= next_settle):
-                                print("I run1")
+                                #print("I run1")
                                 curs = cursor.execute("SELECT amount FROM wallet")
                                 curr = float(curs.fetchone()[0])
                                 newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
@@ -317,7 +345,7 @@ def check_pending():
                                 try:
                                     if int(buy_row['close_qty']) == int(buy_row['qty']):
                                        
-                                        print("deleting, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+                                        #print("deleting, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
                                         
@@ -325,7 +353,7 @@ def check_pending():
                                         conn.close()
                                     else:
 
-                                        print("updating, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+                                        #print("updating, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty']), int(buy_row['Trans_ID'])))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty']), int(sell_row['Trans_ID'])))
                                         conn.commit()
@@ -381,7 +409,7 @@ def check_pending():
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
                                     else:
-                                        print("I run2", buy_row['qty'] - buy_row['close_qty'], buy_row['Trans_ID'])
+                                        #print("I run2", buy_row['qty'] - buy_row['close_qty'], buy_row['Trans_ID'])
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty'])), int(buy_row['Trans_ID']))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty'])), int(sell_row['Trans_ID']))
 
@@ -390,17 +418,17 @@ def check_pending():
                                     # Check if the transactions were actually deleted or updated
                                     cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (buy_row['Trans_ID'],))
                                     buy_row_check = cursor.fetchone()
-                                    print(f"After operation, buy_row with Trans_ID {buy_row['Trans_ID']}: {buy_row_check}")
+                                    #print(f"After operation, buy_row with Trans_ID {buy_row['Trans_ID']}: {buy_row_check}")
 
                                     cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (sell_row['Trans_ID'],))
                                     sell_row_check = cursor.fetchone()
-                                    print(f"After operation, sell_row with Trans_ID {sell_row['Trans_ID']}: {sell_row_check}")
+                                    #print(f"After operation, sell_row with Trans_ID {sell_row['Trans_ID']}: {sell_row_check}")
 
 
     #Buying
 
-    print(processed_contract_dates)
-    for contract_date, group in buy_groups.items():
+    #print(processed_contract_dates)
+    for trans_id, group in buy_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
                 if row['status'] == 'Pending':
@@ -416,12 +444,12 @@ def check_pending():
                     
                     curr_price = float(fetch_settlePrice(current_date, row['contract_date']))
                     next_price = float(fetch_settlePrice(next_date, row['contract_date']))
-                    print("curr_price", curr_price, "next_price", next_price)
-                    print("row['close_limit']", row['close_limit'], "row['purchase_price']", row['purchase_price'], "row['close_qty']", row['close_qty'])
+                    #print("curr_price", curr_price, "next_price", next_price)
+                   # print("row['close_limit']", row['close_limit'], "row['purchase_price']", row['purchase_price'], "row['close_qty']", row['close_qty'])
 
                     if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
                         
-                        print('ran the buy section')
+                        #print('ran the buy section')
                         curs = cursor.execute("SELECT amount FROM wallet")
                         curr = float(curs.fetchone()[0])
                         newcurr = curr + (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
@@ -433,7 +461,7 @@ def check_pending():
                         conn.commit()
 
     #Selling                      
-    for contract_date, group in sell_groups.items():
+    for trans_id, group in sell_groups.items():
         for _, row in group.iterrows():
             if row['Trans_ID'] not in processed_contract_dates:
 
@@ -446,12 +474,12 @@ def check_pending():
                         conn.commit()
                 elif row['close_qty'] != None:
                     # Look for close outs
-                    print('Ran hereeee')
+                    #print('Ran hereeee')
                     curr_price = fetch_settlePrice(current_date, row['contract_date'])
                     next_price = fetch_settlePrice(next_date, row['contract_date'])
                     if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
                         
-                        print('got hereeee')
+                        #print('got hereeee')
                         curs = cursor.execute("SELECT amount FROM wallet")
                         curr = float(curs.fetchone()[0])
                         newcurr = curr - (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
@@ -478,12 +506,14 @@ def getSpreadMargin():
 
     return jsonify({'status': 'success'})
 
+
+#Needs an overhual
 @app.route('/getWalletValues', methods=['POST'])
 def update_wallet():
     #print("update_wallet_values please")
     data = request.json
-    print(data)
-    print(data['date'])
+    #print(data)
+    #print(data['date'])
     current_date = pd.to_datetime(data['date']).date()
     
     # Open database connection once
@@ -494,17 +524,18 @@ def update_wallet():
     cursor.execute("SELECT * FROM wallet")
     wallet = cursor.fetchall()
     
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ? AND contract_date >= ?", (current_date, current_date))
-    transactions = cursor.fetchall()
+    query = "SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ? AND contract_date >= ?"
+    transactions_df = pd.read_sql_query(query, conn, params=(current_date, current_date))
 
-    print("transactions", transactions)
-    if not transactions:
+    #print("transactions", transactions)
+    if transactions_df.empty:
         cursor.execute("UPDATE wallet SET unrealized = 0.0, margin = 0.0")
         conn.commit()
         conn.close()
         return jsonify({'status': 'success'})
     
-    
+    grouped = transactions_df.groupby(['type', 'Trans_ID'])
+
     # Fetch oil data
     oil_data = fetch_oil()
     oil_data['CurrentDate'] = pd.to_datetime(oil_data['CurrentDate'], format='%Y-%m-%d').dt.date
@@ -514,54 +545,68 @@ def update_wallet():
     margin = 0
     buy_groups = {}
     sell_groups = {}
-    
-    for transaction in transactions:
-        type_ = transaction[7]
-        contract_date = transaction[2]
-        
+
+    for (type_, trans_id), group in grouped:
         if type_ == 'buy':
-            buy_groups.setdefault(contract_date, []).append(transaction)
+            buy_groups[trans_id] = group
         elif type_ == 'sell':
-            sell_groups.setdefault(contract_date, []).append(transaction)
-    
+            sell_groups[trans_id] = group
+
     processed_contract_dates = set()
-    
-    for buy_contract_date, buy_group in buy_groups.items():
-        buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
-        for sell_contract_date, sell_group in sell_groups.items():
-            sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
-            
+
+    for trans_id, buy_group in buy_groups.items():
+        buy_date = datetime.strptime(buy_group.iloc[0]['contract_date'], '%Y-%m-%d')
+        for trans_id, sell_group in sell_groups.items():
+            sell_date = datetime.strptime(sell_group.iloc[0]['contract_date'], '%Y-%m-%d')
+
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
-               (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12) or \
-               (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
-               (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
-                
+            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12):
+
                 min_length = min(len(buy_group), len(sell_group))
                 for i in range(min_length):
-                    buy_row = buy_group[i]
-                    sell_row = sell_group[i]
-                    
-                    if buy_row[1] == sell_row[1]:
-                        margin += spreadMargin * buy_row[3]
-                        processed_contract_dates.update([buy_row[0], sell_row[0]])
-    
+                    buy_row = buy_group.iloc[i]
+                    sell_row = sell_group.iloc[i]
+
+                    if buy_row['trans_date'] == sell_row['trans_date']:
+                        margin += spreadMargin * buy_row['qty']
+                        processed_contract_dates.update([buy_row['Trans_ID'], sell_row['Trans_ID']])
+
+                
+            elif (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
+                (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
+
+                min_length = min(len(buy_group), len(sell_group))
+                for i in range(min_length):
+                    buy_row = buy_group.iloc[i]
+                    sell_row = sell_group.iloc[i]
+
+                    if buy_row['trans_date'] == sell_row['trans_date']:
+                        margin += spreadMargin * buy_row['qty']
+                        processed_contract_dates.update([buy_row['Trans_ID'], sell_row['Trans_ID']])
+
+                
+
     for group in buy_groups.values():
-        for row in group:
-            if row[0] not in processed_contract_dates:
-                margin += contractMargin * row[3]
-    
+        for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                margin += contractMargin * row['qty']
+                
+
     for group in sell_groups.values():
-        for row in group:
-            if row[0] not in processed_contract_dates:
-                margin += contractMargin * row[3]
-    
+        for _, row in group.iterrows():
+            if row['Trans_ID'] not in processed_contract_dates:
+                margin += contractMargin * row['qty']
+               
+
+   
+    margin = float(margin)
     cursor.execute("UPDATE wallet SET margin = ?", (margin,))
     conn.commit()
     
     temp = 0
 
-    for transaction in transactions:
-        contract_date = pd.to_datetime(transaction[2]).date()
+    for _, transaction in transactions_df.iterrows():
+        contract_date = pd.to_datetime(transaction['contract_date']).date()
         
         filtered_data = oil_data[oil_data['CloseDate'] == contract_date]
         
@@ -577,13 +622,17 @@ def update_wallet():
         
         if not filtered_data.empty:
             settle_price = filtered_data['Settlement Price'].values[0]
-
-            if transaction[7] == 'buy':
+            
+            print("settle_price", settle_price)
+            if transaction['type'] == 'buy':
                 
-                temp += (settle_price - transaction[8]) * transaction[3] * 1000
+                print (" buy purchase_price", transaction['purchase_price'])
+                temp += (settle_price - transaction['purchase_price']) * transaction['qty'] * 1000
             else:
-                
-                temp -= (settle_price - transaction[8]) * transaction[3] * 1000
+                print (" sell purchase_price", transaction['purchase_price'])
+                temp -= (settle_price - transaction['purchase_price']) * transaction['qty'] * 1000
+
+            print("temp", temp)
     
     
     cursor.execute("UPDATE wallet SET unrealized = ?", (temp,))
@@ -592,11 +641,15 @@ def update_wallet():
     wallet_amount = wallet[0][0]
     wallet_margin = wallet[0][1]
     
+    wallet_margin = float(wallet_margin)
+    temp = float(temp)
+
     if wallet_amount <= abs(temp - wallet_margin):
         cost = round(wallet_amount + (temp - wallet_margin), 2)
         return jsonify({'message': 'margin call', 'margin_info': cost}), 200
     
     conn.close()
+    
     return jsonify({'message': 'success'})
 
 @app.route('/buyContract', methods=['POST'])
@@ -614,11 +667,12 @@ def buy_contract():
         mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
         mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
 
+        #print("dataaaaaa", data)
 
-        price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
+        #price = mstrOil[(mstrOil['CurrentDate'] == data['transactionDate']) & (mstrOil['CloseDate'] == data['contractDate'])]['Settlement Price'].values[0]
 
 
-        #THis will never happen for spreads currently
+        #print("data['immediate']", data['immediate'])
         if data['immediate']:
             purchase_date = data['transactionDate']
             status = 'Purchased'
@@ -700,122 +754,137 @@ def bought_data():
 
     # Filter data
     filtered_data = data[(data['trans_date'] <= selected_current_date) & (data['contract_date'] >= selected_current_date)]
-    filtered_data['contract_date'] = filtered_data['contract_date'].astype(str)
+    filtered_data.loc[:, 'contract_date'] = filtered_data['contract_date'].astype(str)
 
     # Group spreads
     spread_data = []
-    grouped = filtered_data.groupby(['type', 'contract_date'])
+    grouped = filtered_data.groupby(['type', 'Trans_ID'])
 
     # Create a dictionary to hold buy and sell groups by contract date
     buy_groups = {}
     sell_groups = {}
 
-    for (type_, contract_date), group in grouped:
+    for (type_, trans_id), group in grouped:
         if type_ == 'buy':
-            buy_groups[contract_date] = group
+            buy_groups[trans_id] = group
         elif type_ == 'sell':
-            sell_groups[contract_date] = group
+            sell_groups[trans_id] = group
 
     # Set to keep track of processed contract dates
     processed_contract_dates = set()
 
-    for buy_contract_date, buy_group in buy_groups.items():
-        buy_date = datetime.strptime(buy_contract_date, '%Y-%m-%d')
-        for sell_contract_date, sell_group in sell_groups.items():
-            sell_date = datetime.strptime(sell_contract_date, '%Y-%m-%d')
+   
+    for buy_trans_id, buy_group in buy_groups.items():
+
+        buy_contract_date = datetime.strptime(buy_group['contract_date'].values[0], '%Y-%m-%d')
+
+        for sell_trans_id, sell_group in sell_groups.items():
+        
+            sell_contract_date = datetime.strptime(sell_group['contract_date'].values[0], '%Y-%m-%d')
 
             # Check if the months are exactly one month apart
-
-            # buying the close month selling the next month (less common) SELL SPREAD
-            if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
-            (buy_date.year == sell_date.year + 1 and buy_date.month == 1 and sell_date.month == 12):
-              
-                # Match contracts in pairs
-                min_length = min(len(buy_group), len(sell_group))
-                for i in range(min_length):
-                    buy_row = buy_group.iloc[i]
-                    sell_row = sell_group.iloc[i]
-                    
-                    # Check if trans_dates are equal
-                    if buy_row['trans_date'] == sell_row['trans_date']:
-                        # Convert purchase_price to float, handle empty strings
-                        buy_purchase_price = float(buy_row['purchase_price']) if buy_row['purchase_price'] else 0
-                        sell_purchase_price = float(sell_row['purchase_price']) if sell_row['purchase_price'] else 0
-
-                        if buy_purchase_price == 0 or sell_purchase_price == 0:
-                            change = 0
-                            percent_change = 0
-                            purchase_price = ''
-                        else:
-                            purchase_price = round(buy_purchase_price - sell_purchase_price, 2)
-                            change = round((buy_row['settle_price'] - sell_row['settle_price']) - (buy_purchase_price - sell_purchase_price), 2)
-                            percent_change = round(((buy_row['settle_price'] - sell_row['settle_price']) - (buy_purchase_price - sell_purchase_price)) / ((buy_purchase_price - sell_purchase_price)) * 100, 2)
-
-                        spread = {
-                            'contract_date': f"{sell_row['contract_date']}/{buy_row['contract_date']}",
-                            'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
-                            'type': 'buy',
-                            'limit_price': buy_row['limit_price'],
-                            'purchase_date': buy_row['purchase_date'],
-                            'status': buy_row['status'],
-                            'purchase_price': purchase_price,
-                            'change': change,
-                            'percent_change': percent_change,
-                            'qty': buy_row['qty'],
-                            'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
-                        }
-                        spread_data.append(spread)
-                        # Mark these contract dates as processed
-                        processed_contract_dates.add(buy_row['Trans_ID'])
-                        processed_contract_dates.add(sell_row['Trans_ID'])
-
-            #buying the next month selling the close month
-            elif (sell_date.year == buy_date.year and sell_date.month == buy_date.month + 1) or \
-            (sell_date.year == buy_date.year + 1 and sell_date.month == 1 and buy_date.month == 12):
+            if (buy_trans_id not in processed_contract_dates and sell_trans_id not in processed_contract_dates):
                 
-                # Match contracts in pairs
-                min_length = min(len(buy_group), len(sell_group))
-                for i in range(min_length):
-                    buy_row = buy_group.iloc[i]
-                    sell_row = sell_group.iloc[i]
+
+                # buying the close month selling the next month (less common) SELL SPREAD
+                if (buy_contract_date.year == sell_contract_date.year and buy_contract_date.month == sell_contract_date.month + 1) or \
+                (buy_contract_date.year == sell_contract_date.year + 1 and buy_contract_date.month == 1 and sell_contract_date.month == 12):
+                
+
+                    # Match contracts in pairs
+                    min_length = min(len(buy_group), len(sell_group))
                     
-                    # Check if trans_dates are equal
-                    if buy_row['trans_date'] == sell_row['trans_date']:
-                        # Convert purchase_price to float, handle empty strings
-                        buy_purchase_price = float(buy_row['purchase_price']) if buy_row['purchase_price'] else 0
-                        sell_purchase_price = float(sell_row['purchase_price']) if sell_row['purchase_price'] else 0
+                    for i in range(min_length):
+                        buy_row = buy_group.iloc[i]
+                        sell_row = sell_group.iloc[i]
 
-                        if buy_purchase_price == 0 or sell_purchase_price == 0:
-                            change = 0
-                            percent_change = 0
-                            purchase_price = ''
-                        else:
-                            purchase_price = round(sell_purchase_price - buy_purchase_price, 2)
-                            change = round((buy_purchase_price - sell_purchase_price) - (buy_row['settle_price'] - sell_row['settle_price']), 2)
-                            percent_change = round(((buy_purchase_price - sell_purchase_price) - (buy_row['settle_price'] - sell_row['settle_price'])) / (buy_row['settle_price'] - sell_row['settle_price']) * 100, 2)
+                        
+                        
+                        # Check if trans_dates are equal
+                        if buy_row['trans_date'] == sell_row['trans_date'] and buy_row['limit_price'] == sell_row['limit_price'] and buy_row['qty'] == sell_row['qty']:
+                            # Convert purchase_price to float, handle empty strings
+                            buy_purchase_price = float(buy_row['purchase_price']) if buy_row['purchase_price'] else 0
+                            sell_purchase_price = float(sell_row['purchase_price']) if sell_row['purchase_price'] else 0
 
-                        spread = {
-                            'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
-                            'settle_price': round(sell_row['settle_price'] - buy_row['settle_price'], 2),
-                            'type': 'sell',
-                            'limit_price': buy_row['limit_price'],
-                            'purchase_date': buy_row['purchase_date'],
-                            'status': buy_row['status'],
-                            'purchase_price': purchase_price,
-                            'change': change,
-                            'percent_change': percent_change,
-                            'qty': buy_row['qty'],
-                            'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
-                        }
-                        spread_data.append(spread)
-                        # Mark these contract dates as processed
-                        processed_contract_dates.add(buy_row['Trans_ID'])
-                        processed_contract_dates.add(sell_row['Trans_ID'])
+                            if buy_purchase_price == 0 or sell_purchase_price == 0:
+                                change = 0
+                                percent_change = 0
+                                purchase_price = ''
+                            else:
+                                purchase_price = round(sell_purchase_price - buy_purchase_price, 2)
+                                change = round((buy_row['settle_price'] - sell_row['settle_price']) - (sell_purchase_price - buy_purchase_price), 2)
+                                percent_change = round(((buy_row['settle_price'] - sell_row['settle_price']) - (sell_purchase_price - buy_purchase_price)) / ((sell_purchase_price - buy_purchase_price)) * 100, 2)
+
+                            spread = {
+                                'contract_date': f"{sell_row['contract_date']}/{buy_row['contract_date']}",
+                                'settle_price': round(buy_row['settle_price'] - sell_row['settle_price'], 2),
+                                'type': 'buy',
+                                'limit_price': buy_row['limit_price'],
+                                'purchase_date': buy_row['purchase_date'],
+                                'status': buy_row['status'],
+                                'purchase_price': purchase_price,
+                                'change': change,
+                                'percent_change': percent_change,
+                                'qty': buy_row['qty'],
+                                'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
+                            }
+
+                            spread_data.append(spread)
+                            # Mark these contract dates as processed
+
+                            #print("buy id added", buy_row['Trans_ID'], "sell id added", sell_row['Trans_ID'])
+                            processed_contract_dates.add(buy_row['Trans_ID'])
+                            processed_contract_dates.add(sell_row['Trans_ID'])
+
+                #buying the next month selling the close month
+                elif (sell_contract_date.year == buy_contract_date.year and sell_contract_date.month == buy_contract_date.month + 1) or \
+                (sell_contract_date.year == buy_contract_date.year + 1 and sell_contract_date.month == 1 and buy_contract_date.month == 12):
+                    
+                    # Match contracts in pairs
+                    min_length = min(len(buy_group), len(sell_group))
+                    for i in range(min_length):
+                        buy_row = buy_group.iloc[i]
+                        sell_row = sell_group.iloc[i]
+                        
+                        # Check if trans_dates are equal
+                        if buy_row['trans_date'] == sell_row['trans_date'] and buy_row['limit_price'] == sell_row['limit_price'] and buy_row['qty'] == sell_row['qty']:
+                            
+                            
+                            # Convert purchase_price to float, handle empty strings
+                            buy_purchase_price = float(buy_row['purchase_price']) if buy_row['purchase_price'] else 0
+                            sell_purchase_price = float(sell_row['purchase_price']) if sell_row['purchase_price'] else 0
+
+                            if buy_purchase_price == 0 or sell_purchase_price == 0:
+                                change = 0
+                                percent_change = 0
+                                purchase_price = ''
+                            else:
+                                purchase_price = round(buy_purchase_price - sell_purchase_price, 2)
+                                change = round((buy_purchase_price - sell_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price']), 2)
+                                percent_change = round(((buy_purchase_price - sell_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price'])) / (sell_row['settle_price'] - buy_row['settle_price']) * 100, 2)
+
+                            spread = {
+                                'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
+                                'settle_price': round(sell_row['settle_price'] - buy_row['settle_price'], 2),
+                                'type': 'sell',
+                                'limit_price': buy_row['limit_price'],
+                                'purchase_date': buy_row['purchase_date'],
+                                'status': buy_row['status'],
+                                'purchase_price': purchase_price,
+                                'change': change,
+                                'percent_change': percent_change,
+                                'qty': buy_row['qty'],
+                                'Trans_ID': f"{buy_row['Trans_ID']}, {sell_row['Trans_ID']}"
+                            }
+                            spread_data.append(spread)
+                            # Mark these contract dates as processed
+                            processed_contract_dates.add(buy_row['Trans_ID'])
+                            processed_contract_dates.add(sell_row['Trans_ID'])
 
 
     # Handle remaining lone contracts
     lone_data = []
-    print(processed_contract_dates)
+    #print(processed_contract_dates)
 
     # Buying
     for contract_date, group in buy_groups.items():
@@ -922,7 +991,7 @@ def cancel_transaction():
 
 @app.route('/closeContract', methods=['POST'])     
 def close_contract():
-    print("closeContract")
+    #print("closeContract")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -932,7 +1001,7 @@ def close_contract():
     qty = int(data['qty'])
     limitQty = int(data['limitQty'])
 
-    print(data)
+    #print(data)
     if limitQty == qty:
 
         if id2 == 'none':
@@ -958,7 +1027,7 @@ def close_contract():
     elif limitQty < qty:
 
         if id2 == 'none':
-            print("this should be running")
+            #print("this should be running")
             cursor.execute("Select amount FROM wallet")
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
@@ -991,7 +1060,7 @@ def limit_close():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
-        print("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
+        #print("UPDATE transactions SET close_qty = ?, close_limit = ? WHERE Trans_ID = ?", (int(data['limitQty']), float(data['limitPrice']), int(id1)))
         conn.commit()
         conn.close()   
     else:
@@ -1012,6 +1081,6 @@ if __name__ == '__main__':
     server_thread.daemon = True
     server_thread.start()
     
-    #app.run()
-    FlaskUI(app=app, server="flask").run()
+    app.run()
+    #FlaskUI(app=app, server="flask").run()
 

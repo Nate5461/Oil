@@ -5,8 +5,7 @@ def create_tables():
     c = conn.cursor()
     
     #c.execute('''CREATE TABLE IF NOT EXISTS spreadTransactions (transaction_id INTEGER PRIMARY KEY, transaction_date TEXT, qty INTEGER, frontMonth TEXT, backMonth TEXT, type TEXT, limit_price REAL, status TEXT, purchase_date TEXT)''')
-    c.execute('''ALTER TABLE Transactions ADD COLUMN close_qty INTEGER;''')
-    c.execute('''ALTER TABLE Transactions ADD COLUMN close_limit REAL;''')
+    #c.execute('''ALTER TABLE wallet ADD COLUMN excess INTEGER;''')
     
     conn.commit()
     conn.close()

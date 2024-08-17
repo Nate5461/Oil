@@ -12,6 +12,7 @@
     <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
     <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
     <div id="walletMargin" data-wallet-margin="{{ margin }}"></div>
+    <div id="walletExcess" data-wallet-excess="{{ excess }}"></div>
 
     <nav class = "navigation">
         <ul>
@@ -22,10 +23,11 @@
             </div>
             <div class="right-container">
                 <div class="loader" id="loadImg"></div>
-                <li><span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
-                <li><span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li> 
+                <li>EX: <span class="dropLabelExcess" title="Excess Value"> {{ excess }} </span></li>
+                <li>UR: <span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
+                <li>M: <span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
                 <div class="wallet-container">
-                    <li><span class="wallet_number"> {{ wallet_number }} </span></li>
+                    <li>W: <span class="wallet_number"> {{ wallet_number }} </span></li>
                     <div class="dropdown-menu">
                         <button class="dropbtn" onclick=depositFunds()>Deposit</button>
                         <button class="dropbtn"onclick=withdrawFunds()>Withdraw</button>
