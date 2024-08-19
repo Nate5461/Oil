@@ -62,6 +62,7 @@
         </table>
     </div>
 
+
     <div id="modal">
         <div class="modal-content">
             <h2>Contract Actions</h2>
@@ -156,11 +157,11 @@
                 <div class="modal-radio-container">
                     <label class="radio">
                         <input type="radio" id="sbuyRadio" name="contractAction" checked>
-                        <span>Buying far month, selling near month</span>  
+                        <span>Buying back month, selling front month</span>  
                     </label>
                     <label class="radio">
                         <input type="radio" id="ssellRadio" name="contractAction">
-                        <span>Selling far month, buying near month</span>
+                        <span>Selling back month, buying front month</span>
                     </label>
                 </div>
                     
@@ -171,7 +172,10 @@
             </div>
         </div>
     </div>
-
+    <div id="graphContainer">
+        <canvas id="myChart"></canvas>
+    </div>
     <script src="static/scripts.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 </html>

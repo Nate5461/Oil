@@ -212,7 +212,9 @@ def bought():
 def stats():
     return render_template('stats.html')
 
+
 def fetch_settlePrice(date, contract_date):
+    time1 = datetime.now()
     mstrOil = fetch_oil()
     mstrOil['CurrentDate'] = pd.to_datetime(mstrOil['CurrentDate'], format='%Y-%m-%d').dt.date
     mstrOil['CloseDate'] = pd.to_datetime(mstrOil['CloseDate'], format='%Y-%m-%d').dt.date
@@ -233,7 +235,8 @@ def fetch_settlePrice(date, contract_date):
             settlePrice = closest_record['Settlement Price'].values[0]
         else:
             settlePrice = None  # Handle the case where no previous date is found
-
+    time2 = datetime.now()
+    print("Time taken to fetch settle price:", time2 - time1)
     return settlePrice
 
 @app.route('/getSingleProfit', methods=['POST'])
@@ -257,25 +260,35 @@ def get_single_profit():
     profit = limit - df['purchase_price'].values[0]
 
 
+
+#Give this a big speed overhual
 @app.route('/check_pending', methods=['POST'])
 def check_pending():
+
+    time1 = datetime.now()
+
+    #Data from the request
     data = request.json
+
+    #Format the current and next date
     current_date = pd.to_datetime(data['date']).date()
     next_date = pd.to_datetime(data['next_date']).date()
 
+    #Open database connection
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    next3days = next_date + timedelta(days=3)
+    #next3days = next_date + timedelta(days=3)
 
     #fetch relevent data
     cursor.execute("SELECT * FROM transactions WHERE trans_date <= ? AND contract_date >= ?", (current_date, current_date))
+    
+
     pending_data = cursor.fetchall()
 
     df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
     
-
     grouped = df.groupby(['type', 'Trans_ID'])
 
     buy_groups = {}
@@ -289,11 +302,14 @@ def check_pending():
 
     processed_contract_dates = set()
 
+
+    print("buy_groups", len(buy_groups), "sell_groups", len(sell_groups))
     for trans_id, buy_group in buy_groups.items():
         buy_date = datetime.strptime(buy_group.iloc[0]['contract_date'], '%Y-%m-%d')
+        
+        time3 = datetime.now()
         for trans_id, sell_group in sell_groups.items():
             sell_date = datetime.strptime(sell_group.iloc[0]['contract_date'], '%Y-%m-%d')
-
 
             #BUY SPREAD
             if (buy_date.year == sell_date.year and buy_date.month == sell_date.month + 1) or \
@@ -350,7 +366,7 @@ def check_pending():
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
                                         
                                         conn.commit()
-                                        conn.close()
+                                        
                                     else:
 
                                         #print("updating, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
@@ -358,7 +374,7 @@ def check_pending():
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty']), int(sell_row['Trans_ID'])))
                                         conn.commit()
                                         
-                                        conn.close()
+                                        
                                 except Exception as e:
                                     print("Error:", e)
             #SELL SPREAD
@@ -413,7 +429,7 @@ def check_pending():
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty'])), int(buy_row['Trans_ID']))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty'])), int(sell_row['Trans_ID']))
 
-                                    conn.commit()
+                                    
 
                                     # Check if the transactions were actually deleted or updated
                                     cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (buy_row['Trans_ID'],))
@@ -422,9 +438,14 @@ def check_pending():
 
                                     cursor.execute("SELECT * FROM transactions WHERE Trans_ID = ?", (sell_row['Trans_ID'],))
                                     sell_row_check = cursor.fetchone()
+
+                                    conn.commit()
+        
                                     #print(f"After operation, sell_row with Trans_ID {sell_row['Trans_ID']}: {sell_row_check}")
-
-
+            
+        time4 = datetime.now()
+        print("Time taken to check spreads:", time4 - time3)
+    
     #Buying
 
     #print(processed_contract_dates)
@@ -491,6 +512,8 @@ def check_pending():
                             cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(row['qty']) - int(row['close_qty']), int(row['Trans_ID'])))
                         conn.commit()
     conn.close()
+    time2 = datetime.now()
+    print("Time taken to check pending transactions:", time2 - time1)
     return jsonify("Pending transactions checked")
 
 
@@ -643,10 +666,13 @@ def update_wallet():
     
     wallet_margin = float(wallet_margin)
     temp = float(temp)
+            
+    #Should be fixed
 
-    if wallet_amount <= abs(temp - wallet_margin):
-        cost = round(wallet_amount + (temp - wallet_margin), 2)
-        return jsonify({'message': 'margin call', 'margin_info': cost}), 200
+    if (temp - wallet_margin) < 0:
+        if 0 > wallet_amount + (temp - wallet_margin):
+            cost = round(wallet_amount + (temp - wallet_margin), 2)
+            return jsonify({'message': 'margin call', 'margin_info': cost}), 200
     
     conn.close()
     
@@ -811,9 +837,9 @@ def bought_data():
                                 percent_change = 0
                                 purchase_price = ''
                             else:
-                                purchase_price = round(sell_purchase_price - buy_purchase_price, 2)
-                                change = round((buy_row['settle_price'] - sell_row['settle_price']) - (sell_purchase_price - buy_purchase_price), 2)
-                                percent_change = round(((buy_row['settle_price'] - sell_row['settle_price']) - (sell_purchase_price - buy_purchase_price)) / ((sell_purchase_price - buy_purchase_price)) * 100, 2)
+                                purchase_price = round(buy_purchase_price - sell_purchase_price, 2)
+                                change = round((buy_row['settle_price'] - sell_row['settle_price']) - (buy_purchase_price - sell_purchase_price), 2)
+                                percent_change = round(((buy_row['settle_price'] - sell_row['settle_price']) - (buy_purchase_price - sell_purchase_price)) / (abs(buy_purchase_price - sell_purchase_price)) * 100, 2)
 
                             spread = {
                                 'contract_date': f"{sell_row['contract_date']}/{buy_row['contract_date']}",
@@ -859,9 +885,9 @@ def bought_data():
                                 percent_change = 0
                                 purchase_price = ''
                             else:
-                                purchase_price = round(buy_purchase_price - sell_purchase_price, 2)
-                                change = round((buy_purchase_price - sell_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price']), 2)
-                                percent_change = round(((buy_purchase_price - sell_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price'])) / (sell_row['settle_price'] - buy_row['settle_price']) * 100, 2)
+                                purchase_price = round(sell_purchase_price - buy_purchase_price, 2)
+                                change = round((sell_purchase_price - buy_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price']), 2)
+                                percent_change = round(((sell_purchase_price - buy_purchase_price) - (sell_row['settle_price'] - buy_row['settle_price'])) / abs(sell_row['settle_price'] - buy_row['settle_price']) * 100, 2)
 
                             spread = {
                                 'contract_date': f"{buy_row['contract_date']}/{sell_row['contract_date']}",
@@ -1048,7 +1074,36 @@ def close_contract():
         return jsonify({"message": "Error: Quantity too large or not entered"}), 500
     
     
-                       
+@app.route('/getGraph', methods=['POST'])
+def get_graph():
+    try:
+        data = request.json
+        
+        # Validate and parse the date and contract fields
+        try:
+            date = pd.to_datetime(data['date']).date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Expected format: YYYY-MM-DD or similar"}), 400
+        
+        try:
+            contract = pd.to_datetime(data['contract']).date()
+        except ValueError:
+            return jsonify({"error": "Invalid contract date format. Expected format: YYYY-MM-DD or similar"}), 400
+
+        oil = fetch_oil()
+        oil['CurrentDate'] = pd.to_datetime(oil['CurrentDate']).dt.date
+        oil['CloseDate'] = pd.to_datetime(oil['CloseDate']).dt.date
+
+        start_date = date - timedelta(days=90)
+
+        filtered_data = oil[(oil['CurrentDate'] >= start_date) & (oil['CurrentDate'] <= date) & (oil['CloseDate'] == contract)]
+        filtered_data = filtered_data.sort_values(by='CurrentDate')
+
+        return jsonify(filtered_data.to_dict(orient='records'))
+    except Exception as e:
+        return jsonify({"error": "An unexpected error occurred: " + str(e)}), 500
+
+
 @app.route('/limitClose', methods=['POST'])
 def limit_close():
     data = request.json

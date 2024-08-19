@@ -4,3 +4,4 @@ build
 excel/
 Application/
 _pycache_
+node_modules/

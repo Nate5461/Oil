@@ -40,10 +40,74 @@ function giveConfig() {
 
 window.onload = giveConfig;
 
+let chartInstance = null;
+
+function loadGraph() {
+    const date = localStorage.getItem('selectedDate');
+    const contract = document.getElementById('mContractDate').textContent;
+
+    console.log(date, contract);
+    fetch('/getGraph', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            date: date,
+            contract: contract
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log(data);
+
+        const labels = data.map(row => {
+            const date = new Date(row['CurrentDate']);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        });
+        
+        
+        const values = data.map(row => row['Settlement Price']);
+        
+        const ctx = document.getElementById('myChart').getContext('2d');
+        
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: contract,
+                    data: values,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+
+    document.getElementById('myChart').style.display = 'block';
+}
+
 function closeModal() {
     const modal = document.getElementById('modal');
+    const graph = document.getElementById('myChart');
     if (modal) {
         modal.style.display = 'none';
+        graph.style.display = 'none';
     } else {
         console.error('Modal element not found');
     }
@@ -63,8 +127,8 @@ function buySpread() {
     var contractDate = document.getElementById('sContractDate').dataset.contractDate;
     var contractDate1 = document.getElementById('sContractDate').dataset.contractDate1;
 
-    var price1 = document.getElementById('sPrice').dataset.price1;
-    var price2 = document.getElementById('sPrice').dataset.price2;
+    var price2 = document.getElementById('sPrice').dataset.price1;
+    var price1 = document.getElementById('sPrice').dataset.price2;
 
     var spreadPrice = document.getElementById('sPrice').textContent;
     var currentDate = document.getElementById('sCurrentDate').textContent;
@@ -74,9 +138,12 @@ function buySpread() {
     if (document.getElementById('sbuyRadio').checked) {
         var type1 = 'sell';
         var type2 = 'buy';
-    } else {
+    } else if (document.getElementById('ssellRadio').checked) {
         var type1 = 'buy';
         var type2 = 'sell';
+    } else {
+        alert('Please select a transaction type');
+        return;
     }
 
     var wallet = parseFloat(document.getElementById('walletInfo').getAttribute('data-wallet-number'));
@@ -95,8 +162,10 @@ function buySpread() {
     console.log(contractDate, contractDate1, price1, price2, spreadPrice, currentDate, qty, limitPrice, type1, type2);
     console.log("hi")
 
-    temp = Math.round(parseFloat(spreadPrice), 3) - Math.round(parseFloat(limitPrice), 3);
-    //console.log("temp", temp);
+    temp = (parseFloat(spreadPrice) - parseFloat(limitPrice)).toFixed(3);
+    console.log("spreadPrice", parseFloat(spreadPrice));
+    console.log("limitPrice", parseFloat(limitPrice));
+    console.log("temp", temp);
 
     // First fetch with contractDate
     fetch('/buyContract', {
@@ -167,8 +236,11 @@ function buyContract() {
 
     if (document.getElementById('buyRadio').checked) {
         var type = 'buy';
-    } else {
+    } else if (document.getElementById('sellRadio').checked) {
         var type = 'sell';
+    } else {
+        alert('Please select a transaction type');
+        return;
     }
 
     //console.log("wallet", wallet, "unrealized", unrealized, "margin", margin, "qty", qty, "config", config.contractMargin);
@@ -218,15 +290,18 @@ function openModal(contractDate, price, currentDate) {
     const mPrice = document.getElementById('mPrice');
     const mMargin = document.getElementById('marginPrice');
     const mLimit = document.getElementById('limitInput');
+    const mBuyRadio = document.getElementById('buyRadio');
 
     mCloseDate.textContent = contractDate;
     mCurrDate.textContent = currentDate;
     mPrice.textContent = price;
     mMargin.textContent = config.contractMargin.toFixed(2);
     mLimit.value = price;
+    mBuyRadio.checked = true;
 
     updateOptionsForContract();
     modal.style.display = 'block';
+    loadGraph();
 }
 
 
@@ -391,6 +466,8 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     const mCurrDate = document.getElementById('sCurrentDate');
     const mPrice = document.getElementById('sPrice');
     const mMargin = document.getElementById('sMarginPrice');
+    const mLimit = document.getElementById('slimitInput');
+    const mBuyRadio = document.getElementById('sbuyRadio');
 
     // Check if elements are correctly selected
     if (!mCloseDate || !mCurrDate || !mPrice) {
@@ -417,8 +494,13 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
     mCurrDate.textContent = currentDate;
     mPrice.textContent = spreadPrice;
 
+    mLimit.value = spreadPrice;
+    mBuyRadio.checked = true;
 
     updateOptionsSpreadContract();
+
+    
+    
     modal.style.display = 'block';
 }
 
@@ -865,6 +947,8 @@ function updateMain() {
                 localStorage.setItem('selectedDate', formattedNextDate);
 
                 try {
+
+                    let time1 = Date.now();
                     // Call the backend to check pending transactions
                     const response = await fetch('/check_pending', {
                         method: 'POST',
@@ -876,14 +960,28 @@ function updateMain() {
                             next_date: formattedNextDate  // Pass the incremented date
                         })
                     });
+                    let time2 = Date.now();
+
+                    console.log("Time taken for pending", time2 - time1);
 
                     const data = await response.json();
-                    console.log("sending", formattedNextDate);
+                    
+                    time1 = Date.now();
                     fetchDataFunction(formattedNextDate);
+                    time2 = Date.now();
+                    console.log("Time taken for fetch", time2 - time1);
 
                     // Ensure these functions happen in order after the backend call
+
+                    time1 = Date.now();
                     await updateWalletValues();
+                    time2 = Date.now();
+                    console.log("Time taken for wallet values", time2 - time1);
+
+                    time1 = Date.now();
                     await updateWalletNumber();
+                    time2 = Date.now();
+                    console.log("Time taken for wallet number", time2 - time1);
                     colourChange();
                     
                 } catch (error) {
@@ -1021,6 +1119,7 @@ function cancelTransaction(transID) {
         .then(response => response.json())
         .then(data => {
             console.log(data.message);
-            updateWalletNumber();
+            fetchDataFunction(localStorage.getItem('selectedDate'));
+            updateWalletValues();
         });
 }

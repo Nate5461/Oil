@@ -106,7 +106,7 @@ h2 {
 }
 
 #limitInput {
-  width: 70px;
+  width: 100px;
 }
 
 #sqtyInput {
@@ -114,7 +114,7 @@ h2 {
 }
 
 #slimitInput {
-  width: 70px;
+  width: 100px;
 }
 
 #marginPrice {
@@ -142,6 +142,18 @@ h2 {
     display: flex;
     justify-content: center;
     gap: 10px;
+}
+
+#graphContainer {
+  position: relative;
+  z-index: 1000; /* Ensure it is above other elements */
+}
+
+#myChart {
+  display: block;
+  background-color: white; /* Add a background color for visibility */
+  border: 1px solid black; /* Add a border for visibility */
+  display: none;
 }
 
 
