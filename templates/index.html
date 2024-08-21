@@ -34,7 +34,18 @@
                     </div>
                     
                 </div>
-                <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+                
+                <div class="game-menu">
+                    <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=newgame()>New Game</button>
+                        <datalist class="dropbtn" id= "gameList">
+                            <!-- Data rows will be inserted here dynamically -->
+                        </datalist>
+                    </div>
+                    
+                </div>
             </div>
         </ul>
     </nav>
