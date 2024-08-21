@@ -1,5 +1,5 @@
 const config = {
-    minDate: '1993-06-25',
+    minDate: '1986-07-01',
     maxDate: '2015-12-11',
     spreadMargin: 2000,
     contractMargin: 6000,

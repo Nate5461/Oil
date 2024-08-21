@@ -16,10 +16,10 @@ app = Flask(__name__)
 home_dir = os.path.expanduser("~/Downloads/oilapp")
 db_dir = os.path.join(home_dir, 'oilapp')
 os.makedirs(db_dir, exist_ok=True)
-db_path = os.path.join(db_dir, 'oil_data.sqlite')
+#db_path = os.path.join(db_dir, 'oil_data.sqlite')
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-#db_path = os.path.join(script_dir, 'oil_data.sqlite')
+db_path = os.path.join(script_dir, 'oil_data.sqlite')
 
 template_dir = os.path.join(script_dir, 'templates')
 app.template_folder = template_dir
@@ -1136,6 +1136,6 @@ if __name__ == '__main__':
     server_thread.daemon = True
     server_thread.start()
     
-    #app.run()
-    FlaskUI(app=app, server="flask").run()
+    app.run()
+    #FlaskUI(app=app, server="flask").run()
 
