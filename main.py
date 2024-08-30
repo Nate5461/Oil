@@ -43,7 +43,11 @@ def inject_wallet_number():
     #print(f"Database path: {db_path}")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT amount FROM wallet")
+
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
+    cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
 
     wallet = cursor.fetchone()[0]
     conn.close()
@@ -53,7 +57,11 @@ def inject_wallet_number():
 def inject_unrealized():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT unrealized FROM wallet")
+
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
+    cursor.execute("SELECT unrealized FROM wallet WHERE game_id = ?", (game_id,))
     unrealized = cursor.fetchone()[0]
     conn.close()
     return dict(unrealized=unrealized)
@@ -62,7 +70,12 @@ def inject_unrealized():
 def inject_margin():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT margin FROM wallet")
+
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
+
+    cursor.execute("SELECT margin FROM wallet WHERE game_id = ?", (game_id,))
     margin = cursor.fetchone()[0]
     #print("margin", margin)
     conn.close()
@@ -100,19 +113,62 @@ def get_wallet_number():
 
     return no_cache(jsonify(response))
 
+
+@app.route('/selectGame', methods=['POST'])
+def select_game():
+    data = request.json
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE currentGame SET game = ?", (data['game_id'],))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "game changed"})
+
+
+@app.route('/getGames', methods=['GET'])
+def get_games():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM games")
+    games = cursor.fetchall()
+
+    cursor.execute("SELECT game from currentGame")
+    current_game = cursor.fetchone()[0]
+    conn.close()
+    return jsonify({"games": games, "current_game": current_game})
+
+@app.route('/newGame', methods=['GET'])
+def new_game():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("INSERT INTO games (gameName) VALUES ('placeHolder')")
+    conn.commit()
+    
+    cursor.execute("SELECT max(id) FROM games")
+    game_id = cursor.fetchone()[0]
+    
+    cursor.execute("Insert into  wallet (amount, unrealized, margin, game_id) values (0.0, 0.0, 0.0, ?)", (game_id,))
+    conn.commit()
+
+    cursor.execute("Update currentGame set game = ?", (game_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "New game created", "game_id": game_id})
+
 def fetch_bought():
     conn = sqlite3.connect(db_path)
-    query = "SELECT * FROM transactions"  
-    data = pd.read_sql(query, conn)
+    cursor = conn.cursor()
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
+    query = "SELECT * FROM transactions WHERE game_id = ?"  
+    data = pd.read_sql(query, conn, params=(game_id,))
     conn.close()
     return data
 
-def fetch_limits():
-    conn = sqlite3.connect(db_path)
-    query = "SELECT * FROM limit_orders"  
-    data = pd.read_sql(query, conn)
-    conn.close()
-    return data
 
 @app.route('/')
 def index():
@@ -124,7 +180,9 @@ def withdraw():
         data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE wallet SET amount = amount - ?", (data['amount'],))
+        cursor.execute("SELECT game from currentGame")
+        game_id = cursor.fetchone()[0]
+        cursor.execute("UPDATE wallet SET amount = amount - ? WHERE game_id = ?", (data['amount'], game_id))
         conn.commit()
         return jsonify({"message": "Withdrawal successful"}), 200
     except Exception as e:
@@ -136,7 +194,10 @@ def deposit():
         data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE wallet SET amount = amount + ?", (data['amount'],))
+        cursor.execute("SELECT game from currentGame")
+        game_id = cursor.fetchone()[0]
+
+        cursor.execute("UPDATE wallet SET amount = amount + ? WHERE game_id = ?", (data['amount'], game_id))
         conn.commit()
         return jsonify({"message": "Deposit successful"}), 200
     except Exception as e:
@@ -147,7 +208,9 @@ def restart():
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("UPDATE wallet SET amount = 0.0, unrealized = 0.0, margin = 0.0")
+        cursor.execute("SELECT game from currentGame")
+        game_id = cursor.fetchone()[0]
+        cursor.execute("UPDATE wallet SET amount = 0.0, unrealized = 0.0, margin = 0.0 WHERE game_id = ?" (game_id,))
         cursor.execute("DELETE FROM transactions")
         conn.commit()
         return jsonify({"message": "Restart successful"}), 200
@@ -212,6 +275,9 @@ def bought():
 def stats():
     return render_template('stats.html')
 
+@app.route('/history', methods=['GET'])
+def history():
+    return render_template('history.html')
 
 def fetch_settlePrice(date, contract_date):
     time1 = datetime.now()
@@ -247,9 +313,11 @@ def get_single_profit():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
+    cursor.execute("SELECT game from currentGame");
+    game_id = cursor.fetchone()[0]
     current_date = pd.to_datetime(data['date']).date()
     contract_date = pd.to_datetime(data['contract_date']).date()
-    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND contract_date = ? AND ", (current_date, contract_date))
+    cursor.execute("SELECT * FROM transactions WHERE status = 'Purchased' AND contract_date = ? AND game_id = ?", (current_date, contract_date, game_id))
     pending_data = cursor.fetchall()
 
     df = pd.DataFrame(pending_data, columns=[col[0] for col in cursor.description])
@@ -281,8 +349,11 @@ def check_pending():
     
     #next3days = next_date + timedelta(days=3)
 
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
     #fetch relevent data
-    cursor.execute("SELECT * FROM transactions WHERE trans_date <= ? AND contract_date >= ?", (current_date, current_date))
+    cursor.execute("SELECT * FROM transactions WHERE trans_date <= ? AND contract_date >= ? AND game_id = ?", (current_date, current_date, game_id))
     
 
     pending_data = cursor.fetchall()
@@ -416,11 +487,11 @@ def check_pending():
                             # Looking for close outs
                             if (buy_row['close_limit'] >= current_settle and buy_row['close_limit'] <= next_settle) or (buy_row['close_limit'] <= current_settle and buy_row['close_limit'] >= next_settle):
                                     
-                                    curs = cursor.execute("SELECT amount FROM wallet")
+                                    curs = cursor.execute("SELECT amount FROM wallet WHere game_id = ?", (game_id,))
                                     curr = float(curs.fetchone()[0])
                                     newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
                                     
-                                    cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                                    cursor.execute("UPDATE wallet SET amount = ? Where game_id = ?", (newcurr, game_id))
                                     if buy_row['close_qty'] == buy_row['qty']:
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
@@ -471,10 +542,10 @@ def check_pending():
                     if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
                         
                         #print('ran the buy section')
-                        curs = cursor.execute("SELECT amount FROM wallet")
+                        curs = cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
                         curr = float(curs.fetchone()[0])
                         newcurr = curr + (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
-                        cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                        cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (newcurr, game_id))
                         if row['close_qty'] == row['qty']:
                             cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
                         else:
@@ -501,11 +572,11 @@ def check_pending():
                     if row['close_limit'] <= curr_price and row['close_limit'] >= next_price or row['close_limit'] >= curr_price and row['close_limit'] <= next_price:
                         
                         #print('got hereeee')
-                        curs = cursor.execute("SELECT amount FROM wallet")
+                        curs = cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
                         curr = float(curs.fetchone()[0])
                         newcurr = curr - (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
 
-                        cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                        cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (newcurr, game_id))
                         if row['close_qty'] == row['qty']:
                             cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
                         else:
@@ -535,26 +606,27 @@ def getSpreadMargin():
 def update_wallet():
     #print("update_wallet_values please")
     data = request.json
-    #print(data)
-    #print(data['date'])
+    
     current_date = pd.to_datetime(data['date']).date()
     
     # Open database connection once
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
+
     # Fetch wallet and transactions in one go
-    cursor.execute("SELECT * FROM wallet")
+    cursor.execute("SELECT * FROM wallet WHERE game_id = ?", (game_id,))
     wallet = cursor.fetchall()
     
-    query = "SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ? AND contract_date >= ?"
-    transactions_df = pd.read_sql_query(query, conn, params=(current_date, current_date))
+    query = "SELECT * FROM transactions WHERE status = 'Purchased' AND purchase_date <= ? AND contract_date >= ? AND game_id = ?"
+    transactions_df = pd.read_sql_query(query, conn, params=(current_date, current_date, game_id))
 
     #print("transactions", transactions)
     if transactions_df.empty:
-        cursor.execute("UPDATE wallet SET unrealized = 0.0, margin = 0.0")
+        cursor.execute("UPDATE wallet SET unrealized = 0.0, margin = 0.0 WHERE game_id = ?", (game_id,))
         conn.commit()
-        conn.close()
         return jsonify({'status': 'success'})
     
     grouped = transactions_df.groupby(['type', 'Trans_ID'])
@@ -623,7 +695,7 @@ def update_wallet():
 
    
     margin = float(margin)
-    cursor.execute("UPDATE wallet SET margin = ?", (margin,))
+    cursor.execute("UPDATE wallet SET margin = ? WHERE game_id = ?", (margin, game_id))
     conn.commit()
     
     temp = 0
@@ -658,7 +730,7 @@ def update_wallet():
             print("temp", temp)
     
     
-    cursor.execute("UPDATE wallet SET unrealized = ?", (temp,))
+    cursor.execute("UPDATE wallet SET unrealized = ? WHERE game_id = ?" , (temp, game_id))
     conn.commit()
     
     wallet_amount = wallet[0][0]
@@ -687,6 +759,9 @@ def buy_contract():
         cursor = conn.cursor()
         mstrOil = fetch_oil()
         
+        cursor.execute("SELECT game from currentGame")
+        game_id = cursor.fetchone()[0]
+
         data['contractDate'] = pd.to_datetime(data['contractDate']).date()
         data['transactionDate'] = pd.to_datetime(data['transactionDate']).date()
         
@@ -709,8 +784,8 @@ def buy_contract():
             purchase_price = None
 
 
-        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type, purchase_price, trans_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                       (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type'], purchase_price, data['trans_price']))
+        cursor.execute("INSERT INTO transactions (trans_date, contract_date, qty, limit_price, status, purchase_date, type, purchase_price, trans_price, game_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                       (data['transactionDate'], data['contractDate'], data['qty'], data['limitPrice'], status, purchase_date, data['type'], purchase_price, data['trans_price'], game_id))
         conn.commit()  
         conn.close()
 
@@ -1020,6 +1095,8 @@ def close_contract():
     #print("closeContract")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    cursor.execute("SELECT game from currentGame")
+    game_id = cursor.fetchone()[0]
 
     data = request.json
     id1 = int(data['transID1'])
@@ -1032,7 +1109,7 @@ def close_contract():
 
         if id2 == 'none':
             cursor.execute("Delete FROM transactions where Trans_ID = ?", (id1,))
-            cursor.execute("Select amount FROM wallet")
+            cursor.execute("Select amount FROM wallet WHERE game_id = ?", (game_id,))
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
             cursor.execute("UPDATE wallet SET amount = ?", (wallet,))
@@ -1042,10 +1119,10 @@ def close_contract():
             id2 = int(id2)
             cursor.execute("Delete from transactions where Trans_ID = ?", (id1,))
             cursor.execute("Delete from transactions where Trans_ID = ?", (id2,))
-            cursor.execute("Select amount FROM wallet")
+            cursor.execute("Select amount FROM wallet WHERE game_id = ?", (game_id,))
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
-            cursor.execute("UPDATE wallet SET amount = ?", (wallet,))
+            cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (wallet, game_id))
             conn.commit()
             conn.close()
         return jsonify({"message": "Contract closed"}), 200
@@ -1054,7 +1131,7 @@ def close_contract():
 
         if id2 == 'none':
             #print("this should be running")
-            cursor.execute("Select amount FROM wallet")
+            cursor.execute("Select amount FROM wallet WHERE game_id = ?", (game_id,))
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
             cursor.execute("UPDATE wallet SET amount = ?", (wallet,))
@@ -1062,10 +1139,10 @@ def close_contract():
             conn.commit()
             conn.close()
         else:
-            cursor.execute("Select amount FROM wallet")
+            cursor.execute("Select amount FROM wallet WHERE game_id = ?", (game_id,))
             wallet = cursor.fetchone()[0]
             wallet += float(data['profit'])
-            cursor.execute("UPDATE wallet SET amount = ?", (wallet,))
+            cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (wallet, game_id))
             cursor.execute("UPDATE transactions SET qty = ? WHERE Trans_ID = ?", (qty - limitQty, id1))
             cursor.execute("UPDATE transactions SET qty = ? WHERE Trans_ID = ?", (qty - limitQty, id2))   
             conn.commit()

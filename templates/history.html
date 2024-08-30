@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contract Settlement Prices Dashboard</title>
+    <link rel="stylesheet" href="static/styles.css">
+
+</head>
+
+<body>
+    <div id="walletInfo" data-wallet-number="{{ wallet_number }}"></div>
+    <div id="walletUnrealized" data-wallet-unrealized="{{ unrealized }}"></div>
+    <div id="walletMargin" data-wallet-margin="{{ margin }}"></div>
+    <div id="walletExcess" data-wallet-excess="{{ excess }}"></div>
+
+
+    <nav class="navigation">
+        <ul>
+            <div class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/bought">Bought</a></li>
+                <li><a href="/stats">Options</a></li>
+                <li><a href="/history">History</a></li>
+            </div>
+            <div class="right-container">
+                <div class="loader" id="loadImg"></div>
+                <li>EX: <span class="dropLabelExcess" title="Excess Value"> {{ excess }} </span></li>
+                <li>UR: <span class="dropLabelUnrealized" title="Unrealized Value"> {{ unrealized }} </span></li>
+                <li>M: <span class="dropLabelMargin" title="Margin Value"> {{ margin }} </span></li>
+                <div class="wallet-container">
+                    <li>W: <span class="wallet_number"> {{ wallet_number }} </span></li>
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=depositFunds()>Deposit</button>
+                        <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
+                    </div>
+                </div>
+                <div class="game-menu">
+                    <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=newGame()>New Game</button>
+                        <select class="dropbtn" id="gameList" onchange="selectGame()">
+                            <!-- Data rows will be inserted here dynamically -->
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+        </ul>
+    </nav>
+
+    <script src="static/scripts.js"></script>
+</body>
+
+</html>

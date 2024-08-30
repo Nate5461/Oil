@@ -145,8 +145,7 @@ h2 {
 }
 
 #graphContainer {
-  position: relative;
-  z-index: 1000; /* Ensure it is above other elements */
+  position: relative;/* Ensure it is above other elements */
 }
 
 #myChart {
@@ -500,6 +499,38 @@ h2 {
   box-sizing: border-box;
 }
 
+/* Ensure the dropdown menu inside game-menu is displayed on hover */
+.game-menu:hover .dropdown-menu {
+  display: flex; /* Use flex to ensure the buttons are displayed in a column */
+  flex-direction: column;
+}
+
+/* Ensure the dropdown menu is positioned correctly */
+.game-menu .dropdown-menu {
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+  flex-direction: column;
+  display: none; /* Initially hidden */
+  right: 0; /* Align the dropdown menu to the left of the game-menu element */
+}
+
+.game-menu .dropdown-menu .dropbtn {
+  background-color: #ffffff;
+  color: rgb(0, 79, 153);
+  padding: 16px;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.game-menu .dropdown-menu .dropbtn:hover {
+  background-color: #f1f1f1;
+}
 
 .dropdown-menu .dropbtn:hover {
   background-color: #f1f1f1;

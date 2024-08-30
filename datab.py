@@ -6,7 +6,7 @@ def create_tables():
     c = conn.cursor()
     
     c.execute('''DROP TABLE IF EXISTS mstrOil''')
-    c.execute('''CREATE TABLE mstrOil (CurrentDate TEXT, CloseDate TEXT, 'Settlement Price' REAL)''')
+    #c.execute('''CREATE TABLE mstrOil (CurrentDate TEXT, CloseDate TEXT, 'Settlement Price' REAL)''')
     
     conn.commit()
     conn.close()
@@ -30,5 +30,15 @@ def insert_data(csv_file):
 
 
 if __name__ == '__main__':
-    create_tables()
-    insert_data('merged_sorted_final.csv')
+    #create_tables()
+    #insert_data('merged_sorted_final.csv')
+    conn = sqlite3.connect('oil_data.sqlite')
+    c = conn.cursor()
+
+    c.execute('DELETE FROM games')
+    c.execute('''DELETE FROM sqlite_sequence WHERE name = 'games';''')
+
+   
+    
+    conn.commit()
+    conn.close()

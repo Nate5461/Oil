@@ -20,7 +20,8 @@
             <div class="nav-links">
                 <li><a href="/">Home</a></li>
                 <li><a href="/bought">Bought</a></li>
-                <li><a href="/stats">Stats</a></li>
+                <li><a href="/stats">Options</a></li>
+                <li><a href="/history">History</a></li>
             </div>
             <div class="right-container">
                 <div class="loader" id="loadImg"></div>
@@ -34,7 +35,18 @@
                         <button class="dropbtn" onclick=withdrawFunds()>Withdraw</button>
                     </div>
                 </div>
-                <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+
+                <div class="game-menu">
+                    <li><span class="restart_btn" onclick=restart()>Restart</span></li>
+
+                    <div class="dropdown-menu">
+                        <button class="dropbtn" onclick=newGame()>New Game</button>
+                        <select class="dropbtn" id= "gameList" onchange="selectGame()">
+                            <!-- Data rows will be inserted here dynamically -->
+                        </select>
+                    </div>
+                    
+                </div>
             </div>
         </ul>
     </nav>

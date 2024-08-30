@@ -40,6 +40,66 @@ function giveConfig() {
 
 window.onload = giveConfig;
 
+function newGame() {
+    console.log("New Game");
+
+    fetch('/newGame', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+
+            game = data.game_id;
+
+
+            populateGameList();
+            updateWalletValues();
+        });
+
+}
+
+function selectGame() {
+    const gameList = document.getElementById('gameList');
+    const selectedGameId = gameList.value;
+    console.log('Selected game ID:', selectedGameId);
+    fetch('/selectGame', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ game_id: selectedGameId }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            fetchDataFunction(localStorage.getItem('selectedDate'));
+            updateWalletValues();
+        });
+}
+
+function populateGameList() {
+    const gameList = document.getElementById('gameList');
+    gameList.innerHTML = '';
+
+    fetch('/getGames')
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
+            data['games'].forEach(game => {
+                const option = document.createElement('option');
+                option.text = "Game " + game;
+                option.value = game;
+                gameList.appendChild(option);
+            });
+
+            gameList.value = data['current_game'];
+        });
+}
+
 let chartInstance = null;
 
 function loadGraph() {
@@ -104,10 +164,10 @@ function loadGraph() {
 
 function closeModal() {
     const modal = document.getElementById('modal');
-    const graph = document.getElementById('myChart');
+    
     if (modal) {
         modal.style.display = 'none';
-        graph.style.display = 'none';
+        
     } else {
         console.error('Modal element not found');
     }
@@ -645,6 +705,8 @@ function restart() {
                     dataTable.innerHTML = '';
                 }
 
+                populateGameList();
+
             });
     }
 }
@@ -728,6 +790,7 @@ document.addEventListener('DOMContentLoaded', function () {
     loadConfig()
     updateMain();
     colourChange();
+    populateGameList();
 });
 
 function colourChange() {
@@ -897,6 +960,7 @@ function updateMain() {
         displayDate(dateInput.value);
         await updateWalletValues();
         await updateWalletNumber();
+        populateGameList();
         document.getElementById('loadImg').style.display = 'none';
     });
 
@@ -1104,8 +1168,10 @@ function updateMain() {
         localStorage.setItem('selectedDate', config.maxDate);
     }
 
+    populateGameList();
     fetchDataFunction(dateInput.value);
     updateWalletValues();
+    
 }
 
 function cancelTransaction(transID) {
