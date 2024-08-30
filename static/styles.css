@@ -148,6 +148,27 @@ h2 {
   position: relative;/* Ensure it is above other elements */
 }
 
+#historyContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin: 0 auto;
+  padding: 20px;
+  font-size: 1.5em; /* Make text bigger */
+}
+
+.history-row {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid #ccc;
+  width: 80%; /* Adjust width as needed */
+  background-color: #f9f9f9;
+  border-radius: 5px;
+  text-align: left; /* Ensure text is left-aligned within each row */
+}
+
 #myChart {
   display: block;
   background-color: white; /* Add a background color for visibility */

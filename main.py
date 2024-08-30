@@ -16,10 +16,10 @@ app = Flask(__name__)
 home_dir = os.path.expanduser("~/Downloads/oilapp")
 db_dir = os.path.join(home_dir, 'oilapp')
 os.makedirs(db_dir, exist_ok=True)
-#db_path = os.path.join(db_dir, 'oil_data.sqlite')
+db_path = os.path.join(db_dir, 'oil_data.sqlite')
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(script_dir, 'oil_data.sqlite')
+#db_path = os.path.join(script_dir, 'oil_data.sqlite')
 
 template_dir = os.path.join(script_dir, 'templates')
 app.template_folder = template_dir
@@ -184,6 +184,9 @@ def withdraw():
         game_id = cursor.fetchone()[0]
         cursor.execute("UPDATE wallet SET amount = amount - ? WHERE game_id = ?", (data['amount'], game_id))
         conn.commit()
+        cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
+        total = cursor.fetchone()[0]
+        cursor.execute("INSERT INTO savedWallets (type, amount, total, game_id, trans_date) VALUES (?, ?, ?, ?, ?)", ('withdraw', data['amount'], total, game_id, data['date']))
         return jsonify({"message": "Withdrawal successful"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -199,6 +202,10 @@ def deposit():
 
         cursor.execute("UPDATE wallet SET amount = amount + ? WHERE game_id = ?", (data['amount'], game_id))
         conn.commit()
+        cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
+        total = cursor.fetchone()[0]
+        cursor.execute("INSERT INTO savedWallets (type, amount, total, game_id, trans_date) VALUES (?, ?, ?, ?, ?)", ('deposit', data['amount'], total, game_id, data['date']))
+        conn.commit()
         return jsonify({"message": "Deposit successful"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -206,6 +213,7 @@ def deposit():
 @app.route('/restart', methods=['POST'])
 def restart():
     try:
+        data = request.json
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT game from currentGame")
@@ -213,6 +221,7 @@ def restart():
         cursor.execute("UPDATE wallet SET amount = 0.0, unrealized = 0.0, margin = 0.0 WHERE game_id = ?" (game_id,))
         cursor.execute("DELETE FROM transactions")
         conn.commit()
+        cursor.execute("INSERT INTO savedWallets (type, total, game_id, trans_date) VALUES (?, ?, ?, ?)", ('restart', 0.0, game_id, data['date']))
         return jsonify({"message": "Restart successful"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -406,10 +415,16 @@ def check_pending():
                         
                             if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
                                 update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                                log_query = "INSERT INTO SavedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
                                 try:
                                     
                                     cursor.execute(update_query, (next_date, float(next_sell_price + buy_row['limit_price']), int(buy_row['Trans_ID'])))
                                     cursor.execute(update_query, (next_date, float(next_sell_price), int(sell_row['Trans_ID'])))
+
+                                    cursor.execute(log_query, (next_date, sell_row['contract_date'] + "/" + buy_row['contract_date'], buy_row['qty'], 'Purchased', next_date, 'buy', buy_row['limit_price'], game_id))
+                                    
+
                                     conn.commit()
                                 except Exception as e:
                                     print("Error:", e)
@@ -423,16 +438,19 @@ def check_pending():
                             #print("buy_row['close_limit']", buy_row['close_limit'], "current_settle", current_settle, "next_settle", next_settle)
                             if (buy_row['close_limit'] >= current_settle and buy_row['close_limit'] <= next_settle) or (buy_row['close_limit'] <= current_settle and buy_row['close_limit'] >= next_settle):
                                 #print("I run1")
-                                curs = cursor.execute("SELECT amount FROM wallet")
+                                curs = cursor.execute("SELECT amount FROM wallet WHERE game_id = ?", (game_id,))
                                 curr = float(curs.fetchone()[0])
+                                temp = float(buy_row['close_limit'])
                                 newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
-                                cursor.execute("UPDATE wallet SET amount = ?", (newcurr,))
+                                cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (newcurr, game_id))
 
                                 
                                 try:
                                     if int(buy_row['close_qty']) == int(buy_row['qty']):
                                        
                                         #print("deleting, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+                                        cursor.execute("INSERT INTO savedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, sell_row['contract_date'] + "/" + buy_row['contract_date'], buy_row['qty'], 'Sold', next_date, 'buy', temp, game_id))
+                                        
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
                                         
@@ -441,6 +459,8 @@ def check_pending():
                                     else:
 
                                         #print("updating, close_qty", buy_row['close_qty'], "available",  buy_row['qty'])
+
+                                        cursor.execute("INSERT INTO savedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, sell_row['contract_date'] + "/" + buy_row['contract_date'], buy_row['close_qty'], 'Sold', next_date, 'buy', temp, game_id))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty']), int(buy_row['Trans_ID'])))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty']), int(sell_row['Trans_ID'])))
                                         conn.commit()
@@ -472,10 +492,15 @@ def check_pending():
                             
                             if (buy_row['limit_price'] >= current_settle and buy_row['limit_price'] <= next_settle) or (buy_row['limit_price'] <= current_settle and buy_row['limit_price'] >= next_settle):
                                 update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                                log_query = "INSERT INTO SavedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                                
                                 try:
                                     
                                     cursor.execute(update_query, (next_date, float(next_buy_price), int(buy_row['Trans_ID'])))
                                     cursor.execute(update_query, (next_date, float(next_buy_price + buy_row['limit_price']), int(sell_row['Trans_ID'])))
+                                    
+                                    cursor.execute(log_query, (next_date, buy_row['contract_date'] + "/" + sell_row['contract_date'], buy_row['qty'], 'Purchased', next_date, 'sell', buy_row['limit_price'], game_id))
+                                    
                                     conn.commit()
                                 except Exception as e:
                                     print("Error:", e)
@@ -489,14 +514,21 @@ def check_pending():
                                     
                                     curs = cursor.execute("SELECT amount FROM wallet WHere game_id = ?", (game_id,))
                                     curr = float(curs.fetchone()[0])
+                                    temp = float(buy_row['close_limit'])
                                     newcurr = curr + (float(buy_row['close_limit']) - (float(buy_row['purchase_price']) - float(sell_row['purchase_price']))) * int(buy_row['close_qty']) * 1000
                                     
                                     cursor.execute("UPDATE wallet SET amount = ? Where game_id = ?", (newcurr, game_id))
                                     if buy_row['close_qty'] == buy_row['qty']:
+
+                                        cursor.execute("INSERT INTO savedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, buy_row['contract_date'] + "/" + sell_row['contract_date'], buy_row['qty'], 'Sold', next_date, 'sell', temp, game_id))
+
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(buy_row['Trans_ID']),)) 
                                         cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(sell_row['Trans_ID']),))
                                     else:
                                         #print("I run2", buy_row['qty'] - buy_row['close_qty'], buy_row['Trans_ID'])
+                                        
+                                        cursor.execute("INSERT INTO savedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, buy_row['contract_date'] + "/" + sell_row['contract_date'], buy_row['close_qty'], 'Sold', next_date, 'sell', temp, game_id))
+
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(buy_row['qty']) - int(buy_row['close_qty'])), int(buy_row['Trans_ID']))
                                         cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(sell_row['qty']) - int(buy_row['close_qty'])), int(sell_row['Trans_ID']))
 
@@ -528,6 +560,9 @@ def check_pending():
                     next_price = fetch_settlePrice(next_date, row['contract_date'])
                     if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
                         update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                        log_query = "INSERT INTO SavedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                        
+                        cursor.execute(log_query, (next_date, row['contract_date'], row['qty'], 'Purchased', next_date, 'buy', row['limit_price'], game_id))
                         cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
                         conn.commit()
                 elif row['close_qty'] != None:
@@ -547,8 +582,10 @@ def check_pending():
                         newcurr = curr + (float(row['close_limit']) - float(row['purchase_price'])) * int(row['close_qty']) * 1000
                         cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (newcurr, game_id))
                         if row['close_qty'] == row['qty']:
+                            cursor.execute("INSERT INTO SavedGames (Trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (next_date, row['contract_date'], row['qty'], 'Sold', next_date, 'buy', row['close_limit'], game_id))
                             cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
                         else:
+                            cursor.execute("INSERT INTO SavedGames (Trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, row['contract_date'], row['close_qty'], 'Sold', next_date, 'buy', row['close_limit'], game_id))
                             cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(row['qty']) - int(row['close_qty']), int(row['Trans_ID'])))
                         conn.commit()
 
@@ -562,6 +599,10 @@ def check_pending():
                     next_price = fetch_settlePrice(next_date, row['contract_date'])
                     if row['limit_price'] <= curr_price and row['limit_price'] >= next_price or row['limit_price'] >= curr_price and row['limit_price'] <= next_price:
                         update_query = "UPDATE transactions SET status = 'Purchased', purchase_date = ?, purchase_price = ? WHERE Trans_ID = ?"
+                        log_query = "INSERT INTO SavedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                        
+                        cursor.execute(log_query, (next_date, row['contract_date'], row['qty'], 'Purchased', next_date, 'sell', row['limit_price']))
+                        
                         cursor.execute(update_query, (next_date, row['limit_price'], row['Trans_ID']))
                         conn.commit()
                 elif row['close_qty'] != None:
@@ -578,8 +619,11 @@ def check_pending():
 
                         cursor.execute("UPDATE wallet SET amount = ? WHERE game_id = ?", (newcurr, game_id))
                         if row['close_qty'] == row['qty']:
+
+                            cursor.execute("INSERT INTO SavedGames (Trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, row['contract_date'], row['qty'], 'Sold', next_date, 'sell', row['close_limit'], game_id))
                             cursor.execute("DELETE FROM transactions WHERE Trans_ID = ?", (int(row['Trans_ID']),))
                         else:
+                            cursor.execute("INSERT INTO SavedGames (Trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (next_date, row['contract_date'], row['close_qty'], 'Sold', next_date, 'sell', row['close_limit'], game_id))
                             cursor.execute("UPDATE transactions SET qty = ?, close_limit = null, close_qty = null WHERE Trans_ID = ?", (int(row['qty']) - int(row['close_qty']), int(row['Trans_ID'])))
                         conn.commit()
     conn.close()
@@ -778,6 +822,9 @@ def buy_contract():
             purchase_date = data['transactionDate']
             status = 'Purchased'
             purchase_price = data['trans_price']
+
+            cursor.execute("INSERT INTO SavedGames (trans_date, contract_date, qty, status, purchase_date, type, purchase_price, game) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (data['transactionDate'], data['contractDate'], data['qty'], status, purchase_date, data['type'], purchase_price, game_id))
+            conn.commit()
         else:
             purchase_date = None
             status = 'Pending'
@@ -1150,7 +1197,29 @@ def close_contract():
     else:
         return jsonify({"message": "Error: Quantity too large or not entered"}), 500
     
+@app.route('/getSavedGames', methods=['GET'])
+def get_saved_games():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT game FROM currentGame")
+    game_id = cursor.fetchone()[0]
+    cursor.execute("SELECT * FROM savedGames WHERE game = ?", (game_id,))
+    data = cursor.fetchall()
+    conn.close()
+    return jsonify(data)
     
+@app.route('/getSavedWallet', methods=['GET'])
+def get_saved_wallet():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT game FROM currentGame")
+    game_id = cursor.fetchone()[0]
+    cursor.execute("SELECT * FROM savedWallets WHERE game_id = ?", (game_id,))
+    data = cursor.fetchall()
+    conn.close()
+    return jsonify(data)
+
+
 @app.route('/getGraph', methods=['POST'])
 def get_graph():
     try:
@@ -1213,6 +1282,6 @@ if __name__ == '__main__':
     server_thread.daemon = True
     server_thread.start()
     
-    app.run()
-    #FlaskUI(app=app, server="flask").run()
+    #app.run()
+    FlaskUI(app=app, server="flask").run()
 

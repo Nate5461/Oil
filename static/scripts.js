@@ -117,57 +117,57 @@ function loadGraph() {
             contract: contract
         })
     })
-    .then(response => response.json())
-    .then(data => {
-        console.log(data);
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
 
-        const labels = data.map(row => {
-            const date = new Date(row['CurrentDate']);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        });
-        
-        
-        const values = data.map(row => row['Settlement Price']);
-        
-        const ctx = document.getElementById('myChart').getContext('2d');
-        
-        if (chartInstance) {
-            chartInstance.destroy();
-        }
+            const labels = data.map(row => {
+                const date = new Date(row['CurrentDate']);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            });
 
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: contract,
-                    data: values,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: false
+
+            const values = data.map(row => row['Settlement Price']);
+
+            const ctx = document.getElementById('myChart').getContext('2d');
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: contract,
+                        data: values,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
                     }
                 }
-            }
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
         });
-    })
-    .catch(error => {
-        console.error('Error:', error);
-    });
 
     document.getElementById('myChart').style.display = 'block';
 }
 
 function closeModal() {
     const modal = document.getElementById('modal');
-    
+
     if (modal) {
         modal.style.display = 'none';
-        
+
     } else {
         console.error('Modal element not found');
     }
@@ -210,7 +210,7 @@ function buySpread() {
     var unrealized = parseFloat(document.getElementById('walletUnrealized').getAttribute('data-wallet-unrealized'));
     var margin = parseFloat(document.getElementById('walletMargin').getAttribute('data-wallet-margin'));
 
-    
+
 
 
     if (wallet <= Math.abs(unrealized - (margin + (qty * config.spreadMargin)))) {
@@ -227,6 +227,10 @@ function buySpread() {
     console.log("limitPrice", parseFloat(limitPrice));
     console.log("temp", temp);
 
+    const tolerance = 0.0001; // Define a small tolerance value
+    immediate = Math.abs(temp) < tolerance;
+    console.log("immediate", immediate);
+
     // First fetch with contractDate
     fetch('/buyContract', {
         method: 'POST',
@@ -242,7 +246,7 @@ function buySpread() {
             purchaseDate: null,
             type: type1,
             trans_price: price1,
-            immediate: temp === 0
+            immediate: immediate
         }),
     })
         .then(response => response.json())
@@ -264,7 +268,7 @@ function buySpread() {
                     purchaseDate: null,
                     type: type2,
                     trans_price: price2,
-                    immediate: temp === 0
+                    immediate: immediate
                 }),
             });
         })
@@ -376,12 +380,12 @@ function closeContract() {
     let current_price = document.getElementById('mContractDate').dataset.currentPrice;
     let profit = document.getElementById('mContractDate').dataset.profit;
     let limitQty = document.getElementById('mContractDate').dataset.limitQty;
-    
+
     //console.log(document.getElementById('mContractDate').dataset);
     //console.log("TransID's", transID1, qty, limitPrice , current_price, profit);
 
     if (current_price === limitPrice) {
-        fetch ('/closeContract', {
+        fetch('/closeContract', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -394,17 +398,17 @@ function closeContract() {
                 profit: profit
             })
         }).then(response => response.json())
-        .then(data => {
-            //console.log("date", localStorage.getItem('selectedDate'));
-            fetchDataFunction(localStorage.getItem('selectedDate'));
-            
-            closeModal();
-        });
+            .then(data => {
+                //console.log("date", localStorage.getItem('selectedDate'));
+                fetchDataFunction(localStorage.getItem('selectedDate'));
+
+                closeModal();
+            });
 
     } else {
         //console.log("Ran here");
         //console.log("TransID 1", transID1, "TransID 2", transID2, "qty", qty, "lim qty", limitQty, "lim price", limitPrice, "Profit", profit);
-        fetch ('/limitClose', {
+        fetch('/limitClose', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -418,11 +422,11 @@ function closeContract() {
                 profit: profit
             })
         }).then(response => response.json())
-        .then(data => {
-            fetchDataFunction(localStorage.getItem('selectedDate'));
-            
-            closeModal();
-        });
+            .then(data => {
+                fetchDataFunction(localStorage.getItem('selectedDate'));
+
+                closeModal();
+            });
     }
 
     updateWalletValues();
@@ -433,7 +437,7 @@ function closeContract() {
 function openCloseModal(contractDate, currentDate, qty, purchase_price, type, transID, current_price) {
     //console.log(contractDate, currentDate, qty, purchase_price, type, transID, current_price);
 
-    
+
     const modal = document.getElementById('modal');
     const mCloseDate = document.getElementById('mContractDate');
     const mCurrDate = document.getElementById('mCurrentDate');
@@ -479,11 +483,11 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
         if (type === 'buy') {
             limitPrice = parseFloat(limitPrice);
             return (limitPrice - purchasePrice) * qty * 1000;
-        } else{
+        } else {
             limitPrice = parseFloat(limitPrice);
             return (purchasePrice - limitPrice) * qty * 1000;
         }
-        
+
     }
 
     //Need function for actually closing
@@ -491,13 +495,13 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
     if (transID.includes(',')) {
         //console.log("runs", transID);
         const [id1, id2] = transID.split(',');
-        
+
         //console.log("TransID's", id1, id2);
-        
+
         mCloseDate.dataset.transID1 = id1;
         mCloseDate.dataset.transID2 = id2;
         mCloseDate.dataset.qty = qty;
-    
+
         mCloseDate.dataset.currentPrice = parseFloat(current_price);
 
     } else {
@@ -511,7 +515,7 @@ function openCloseModal(contractDate, currentDate, qty, purchase_price, type, tr
         } else {
             mCloseDate.dataset.limitQty = 'none';
         }
-        
+
 
         mCloseDate.dataset.currentPrice = parseFloat(current_price);
     }
@@ -559,8 +563,8 @@ function openSpreadModal(contractDate, contractDate1, price1, price2, spreadPric
 
     updateOptionsSpreadContract();
 
-    
-    
+
+
     modal.style.display = 'block';
 }
 
@@ -610,7 +614,7 @@ async function updateWalletNumber() {
         const unrealizedInfo = parseFloat(data.unrealized_info.unrealized);
         const walletInfo = parseFloat(data.wallet_info.wallet_number);
         const excessInfo = parseFloat(data.excess_info.excess);
-        
+
         if (excessSpan && !isNaN(excessInfo)) {
             if (excess) {
                 excess.setAttribute('data-wallet-excess', excessInfo.toFixed(2));
@@ -623,7 +627,7 @@ async function updateWalletNumber() {
                 margin.setAttribute('data-wallet-margin', marginInfo.toFixed(2));
             }
             marginSpan.textContent = marginInfo.toFixed(2);
-            
+
         }
         if (unrealizedSpan && !isNaN(unrealizedInfo)) {
             if (unrealized) {
@@ -655,7 +659,10 @@ function withdrawFunds() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ amount: amount }),
+            body: JSON.stringify({
+                amount: amount,
+                date: localStorage.getItem('selectedDate')
+            }),
         })
             .then(response => response.json())
             .then(data => {
@@ -674,7 +681,10 @@ function depositFunds() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ amount: amount }),
+            body: JSON.stringify({
+                amount: amount,
+                date: localStorage.getItem('selectedDate')
+            }),
         })
             .then(response => response.json())
             .then(data => {
@@ -692,6 +702,9 @@ function restart() {
             headers: {
                 'Content-Type': 'application/json',
             },
+            body: JSON.stringify({
+                date: localStorage.getItem('selectedDate')
+            }),
         })
             .then(response => response.json())
             .then(data => {
@@ -726,7 +739,7 @@ function updateOptionsForContract() {
         const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
         const optionElement = document.createElement('option');
         optionElement.value = optionValue;
-        
+
         valuesList.appendChild(optionElement);
     }
 
@@ -756,7 +769,7 @@ function updateOptionsForCloseContract(qty) {
         const optionValue = (settlePrice + i * 0.1).toFixed(1); // Ensure one decimal place
         const optionElement = document.createElement('option');
         optionElement.value = optionValue;
-        
+
         valuesList.appendChild(optionElement);
     }
 
@@ -779,18 +792,95 @@ function updateOptionsSpreadContract() {
         const optionValue = (settlePrice + i * 0.05).toFixed(2); // Ensure one decimal place
         const optionElement = document.createElement('option');
         optionElement.value = optionValue;
-        
+
         valuesList.appendChild(optionElement);
     }
 
 }
 
+function getHistory() {
+    Promise.all([
+        fetch('/getSavedGames', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        }).then(response => response.json()),
+        fetch('/getSavedWallet', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        }).then(response => response.json())
+    ])
+        .then(([savedGames, savedWallet]) => {
+            // Combine the data
+            const combinedData = [
+                ...savedGames.map(game => ({
+                    trans_date: game[1],
+                    status: game[5],
+                    Contract_month: game[2],
+                    purchase_price: game[8],
+                    qty: game[12],
+                    type: game[7],
+                    sort_type: 'game'
+                })),
+                ...savedWallet.map(wallet => ({
+                    trans_date: wallet[4],
+                    type: wallet[0],
+                    amount: wallet[1],
+                    total: wallet[2],
+                    sort_type: 'wallet'
+                }))
+            ];
+
+            console.log('Combined data:', combinedData);
+            // Sort by trans_date in descending order
+            combinedData.sort((a, b) => new Date(b.trans_date) - new Date(a.trans_date));
+
+            // Display the sorted data
+            const historyContainer = document.getElementById('historyContainer');
+            historyContainer.innerHTML = ''; // Clear previous content
+
+            combinedData.forEach(item => {
+                const row = document.createElement('div');
+                row.classList.add('history-row');
+
+                if (item.sort_type === 'game') {
+                    row.innerHTML = `
+            <div>Transaction Date: ${item.trans_date}</div>
+            <div>Status: ${item.status}</div>
+            <div>Contract Month: ${item.Contract_month}</div>
+            <div>Purchase Price: ${item.purchase_price}</div>
+            <div>Type: ${item.type}</div>
+            <div>Quantity: ${item.qty}</div>
+        `;
+                } else if (item.sort_type === 'wallet') {
+                    row.innerHTML = `
+            <div>Transaction Date: ${item.trans_date}</div>
+            <div>Type: ${item.type}</div>
+            <div>Amount: ${item.amount}</div>
+            <div>Total: ${item.total}</div>
+        `;
+                }
+
+                historyContainer.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching data:', error);
+        });
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     loadConfig()
-    updateMain();
+    if (window.location.pathname === '/history') {
+        getHistory();
+    } else {
+        updateMain();
+    }
     colourChange();
-    populateGameList();
+    
 });
 
 function colourChange() {
@@ -811,7 +901,7 @@ function colourChange() {
     if (walletElement) {
         const walletValue = parseFloat(walletElement.textContent.trim());
         if (walletValue < 0) {
-           walletElement.classList.add('negative');
+            walletElement.classList.add('negative');
         } else {
             walletElement.classList.add('positive');
         }
@@ -829,7 +919,7 @@ function fetchDataFunction(date) {
 }
 
 function fetchData(date) {
-    
+
     fetch('/data', {
         method: 'POST',
         headers: {
@@ -837,38 +927,38 @@ function fetchData(date) {
         },
         body: JSON.stringify({ date: date }),
     })
-    .then(response => response.json())
-    .then(data => {
-        
-        const tbody = document.querySelector('#dataTable tbody');
-        tbody.innerHTML = ''; // Clear only the tbody
+        .then(response => response.json())
+        .then(data => {
 
-        data.forEach(row => {
-            const tr = document.createElement('tr');
+            const tbody = document.querySelector('#dataTable tbody');
+            tbody.innerHTML = ''; // Clear only the tbody
 
-            // Manually parse the date string
-            const [year, month] = row.CloseDate.split('-');
-            const monthNames = ["January", "February", "March", "April", "May", "June",
-                                "July", "August", "September", "October", "November", "December"];
-            const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
-            
-            const formattedSettlementPrice = parseFloat(row['Settlement Price']).toFixed(2);
-            const formattedChange = parseFloat(row.Change).toFixed(2);
-            const formattedPercentChange = parseFloat(row.percent_change).toFixed(2);
-            const formattedSpread = parseFloat(row.Spread).toFixed(2);
-            
-            tr.innerHTML = ` 
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+
+                // Manually parse the date string
+                const [year, month] = row.CloseDate.split('-');
+                const monthNames = ["January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December"];
+                const formattedDate = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
+
+                const formattedSettlementPrice = parseFloat(row['Settlement Price']).toFixed(2);
+                const formattedChange = parseFloat(row.Change).toFixed(2);
+                const formattedPercentChange = parseFloat(row.percent_change).toFixed(2);
+                const formattedSpread = parseFloat(row.Spread).toFixed(2);
+
+                tr.innerHTML = ` 
                 <td class="contractBox">${formattedDate}</td>
                 <td>${formattedSettlementPrice}</td>
                 <td class="${row.Change < 0 ? 'red' : row.Change > 0 ? 'green' : ''}">${formattedChange}</td>
                 <td class="${row.percent_change < 0 ? 'red' : row.percent_change > 0 ? 'green' : ''}">${formattedPercentChange}</td>
                 <td class="${row.Spread < 0 ? 'spreadRed' : row.Spread > 0 ? 'spreadGreen' : 'spread'}">${formattedSpread}</td>
             `;
-            tbody.appendChild(tr); // Append to tbody
+                tbody.appendChild(tr); // Append to tbody
+            });
+        }).catch(error => {
+            console.error('Error:', error);
         });
-    }).catch(error => {
-        console.error('Error:', error);
-    });
     displayDate(date);
 }
 
@@ -887,10 +977,10 @@ function fetchBought(date) {
 
             data.forEach(row => {
                 const tr = document.createElement('tr');
-                
+
                 const monthNames = ["January", "February", "March", "April", "May", "June",
                     "July", "August", "September", "October", "November", "December"];
-                
+
                 let formattedDate;
                 if (row.contract_date.includes('/')) {
                     const [con1, con2] = row.contract_date.split('/');
@@ -902,9 +992,9 @@ function fetchBought(date) {
                     const [year, month] = row.contract_date.split('-');
                     formattedDate = `${monthNames[parseInt(month, 10) - 1]}  ${year}`;
                 }
-                
+
                 tr.setAttribute('trans-id', row.Trans_ID);
-                
+
                 const formattedSettlementPrice = parseFloat(row.settle_price).toFixed(2);
                 const formattedChange = parseFloat(row.change).toFixed(2);
                 const formattedPercentChange = parseFloat(row.percent_change).toFixed(2);
@@ -931,11 +1021,11 @@ function fetchBought(date) {
 function displayDate(dateIn) {
     const dateElement = document.getElementById('current-date');
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    
+
     // Create a new Date object and set the time to noon to avoid timezone issues
     const date = new Date(dateIn);
     date.setDate(date.getDate() + 1);
-    
+
     const formattedDate = date.toLocaleDateString('en-US', options);
     dateElement.textContent = formattedDate;
 }
@@ -951,7 +1041,7 @@ function updateMain() {
     dateInput.max = config.maxDate;
 
 
-    
+
 
     dateInput.addEventListener('change', async function () {
         document.getElementById('loadImg').style.display = 'block';
@@ -965,7 +1055,7 @@ function updateMain() {
     });
 
     prevButton.addEventListener('click', async function () {
-        
+
         document.getElementById('loadImg').style.display = 'block';
         const date = new Date(dateInput.value);
         date.setDate(date.getDate() - 1);
@@ -1029,7 +1119,7 @@ function updateMain() {
                     console.log("Time taken for pending", time2 - time1);
 
                     const data = await response.json();
-                    
+
                     time1 = Date.now();
                     fetchDataFunction(formattedNextDate);
                     time2 = Date.now();
@@ -1047,7 +1137,7 @@ function updateMain() {
                     time2 = Date.now();
                     console.log("Time taken for wallet number", time2 - time1);
                     colourChange();
-                    
+
                 } catch (error) {
                     console.error('Error:', error);
                 }
@@ -1061,22 +1151,22 @@ function updateMain() {
 
     document.getElementById('dataTable').addEventListener('click', function (event) {
         if (event.target && event.target.classList.contains('contractBox') && window.location.pathname.includes('/bought') && event.target.nextElementSibling.nextElementSibling.nextElementSibling.textContent === 'Purchased') {
-            
+
             // Get the current element
             let currentElement = event.target; //Contract Date
 
             let parentRow = currentElement.closest('tr');
             let transID = parentRow.getAttribute('trans-id');
 
-            
+
             let currentPrice = currentElement.nextElementSibling.nextElementSibling; // Settle Price
 
             let type = currentElement.nextElementSibling.nextElementSibling.nextElementSibling.nextElementSibling;
-            
+
             let qty = type.nextElementSibling;
-            
-            let purchase_price = qty.nextElementSibling.nextElementSibling; 
-                
+
+            let purchase_price = qty.nextElementSibling.nextElementSibling;
+
 
             //              contract month,          current date ,         qty,                 purchase price              type         transID       current price
             openCloseModal(currentElement.textContent, dateInput.value, qty.textContent, purchase_price.textContent, type.textContent, transID, currentPrice.textContent);
@@ -1088,11 +1178,11 @@ function updateMain() {
 
 
                 let transID = parentRow.getAttribute('trans-id');
-                
+
 
                 if (transID.includes('/')) {
                     const [id1, id2] = transID.split('/');
-                    
+
                     console.log("TransID to cancel", id1, id2);
                     cancelTransaction(id1);
                     cancelTransaction(id2);
@@ -1108,7 +1198,7 @@ function updateMain() {
         }
     });
 
-    
+
     document.getElementById('dataTable').addEventListener('click', function (event) {
         console.log("Click");
         if (event.target.classList.contains('spread') || event.target.classList.contains('spreadRed') || event.target.classList.contains('spreadGreen')) {
@@ -1126,9 +1216,9 @@ function updateMain() {
                     return;
                 }
             }
-            
+
             let monthPrice1 = targetElement.nextElementSibling.textContent;
-        
+
             // Get the parent row of the target element
             let parentRow = targetElement.parentElement;
             if (!parentRow) {
@@ -1152,17 +1242,17 @@ function updateMain() {
 
             let monthPrice2 = targetElement1.nextElementSibling.textContent;
 
-            console.log("MonthPrice1", monthPrice1);   
+            console.log("MonthPrice1", monthPrice1);
             console.log("MonthPrice2", monthPrice2);
             openSpreadModal(targetElement1.textContent, targetElement.textContent, monthPrice1, monthPrice2, event.target.textContent, dateInput.value);
         }
     });
 
-    
+
     const storedDate = localStorage.getItem('selectedDate');
     if (storedDate) {
         dateInput.value = storedDate;
-        
+
     } else {
         dateInput.value = config.maxDate;
         localStorage.setItem('selectedDate', config.maxDate);
@@ -1171,7 +1261,7 @@ function updateMain() {
     populateGameList();
     fetchDataFunction(dateInput.value);
     updateWalletValues();
-    
+
 }
 
 function cancelTransaction(transID) {
