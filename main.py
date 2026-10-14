@@ -6,6 +6,7 @@ from threading import Timer
 from datetime import datetime, timedelta
 import os
 import sys
+import traceback
 import shutil
 import socket
 import webbrowser
@@ -16,7 +17,13 @@ PORT = 8080
 
 app = Flask(__name__)
 
+def pause_on_crash(exc_type, exc, tb):
+    # Double-clicked console windows close as soon as the exe exits, so hold it open to show the error
+    traceback.print_exception(exc_type, exc, tb)
+    input('\nOil App hit an error and has to close. Take a screenshot of this window, then press Enter.')
+
 if getattr(sys, 'frozen', False):
+    sys.excepthook = pause_on_crash
     # Running as the PyInstaller exe: bundled files are unpacked to a temp dir,
     # but the database has to live next to the exe so changes persist between runs
     bundle_dir = sys._MEIPASS

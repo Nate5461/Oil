@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build oilApp.exe
+        run: |
+          python -m pip install -r requirements.txt
+          python -m PyInstaller --noconfirm oilApp.spec
+
+      - name: Check the exe runs from an empty folder
+        shell: pwsh
+        run: |
+          $dir = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\fresh"
+          Copy-Item dist\oilApp.exe $dir
+          Start-Process -FilePath "$dir\oilApp.exe" -WorkingDirectory $dir
+          try {
+            $up = $false
+            foreach ($i in 1..120) {
+              try { Invoke-WebRequest http://127.0.0.1:8080/ -UseBasicParsing | Out-Null; $up = $true; break } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $up) { throw 'oilApp.exe never served the home page' }
+            if (-not (Test-Path "$dir\oil_data.sqlite")) { throw 'oil_data.sqlite was not created next to the exe' }
+            # /data reports failures as {"error": ...} with a 200, so check for the expected list of rows
+            $rows = Invoke-RestMethod http://127.0.0.1:8080/data -Method Post -ContentType 'application/json' -Body '{"date":"2000-01-10"}'
+            if ($rows.Count -lt 1 -or -not $rows[0].CloseDate) { throw "/data returned: $($rows | ConvertTo-Json -Compress)" }
+            Write-Host "OK: home page served, database created, /data returned $($rows.Count) rows"
+          } finally {
+            Get-Process oilApp -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = (Get-Content .github/release-notes.md -Raw).Replace('{{REPO}}', $env:GITHUB_REPOSITORY).Replace('{{TAG}}', $env:GITHUB_REF_NAME)
+          Set-Content -Path "$env:RUNNER_TEMP\notes.md" -Value $notes
+          gh release create $env:GITHUB_REF_NAME dist/oilApp.exe --title "Oil App $env:GITHUB_REF_NAME" --notes-file "$env:RUNNER_TEMP\notes.md"
