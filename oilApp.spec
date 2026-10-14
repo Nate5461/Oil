@@ -8,7 +8,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static')],
+    datas=[('templates', 'templates'), ('static', 'static'), ('oil_data.sqlite', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

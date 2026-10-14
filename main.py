@@ -1,27 +1,35 @@
 import pandas as pd
 import sqlite3
 from flask import Flask, render_template, request, jsonify, make_response
-from flask_caching import Cache
-from flaskwebgui import FlaskUI
 from waitress import serve
-from threading import Thread
+from threading import Timer
 from datetime import datetime, timedelta
 import os
+import sys
+import shutil
+import socket
+import webbrowser
 import numpy as np
 import math
 
+PORT = 8080
+
 app = Flask(__name__)
 
-#Rand comment
-home_dir = os.path.expanduser("~/Downloads/oilapp")
-db_dir = os.path.join(home_dir, 'oilapp')
-os.makedirs(db_dir, exist_ok=True)
-#db_path = os.path.join(db_dir, 'oil_data.sqlite')
+if getattr(sys, 'frozen', False):
+    # Running as the PyInstaller exe: bundled files are unpacked to a temp dir,
+    # but the database has to live next to the exe so changes persist between runs
+    bundle_dir = sys._MEIPASS
+    app_dir = os.path.dirname(sys.executable)
+else:
+    bundle_dir = app_dir = os.path.dirname(os.path.abspath(__file__))
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(script_dir, 'oil_data.sqlite')
+db_path = os.path.join(app_dir, 'oil_data.sqlite')
+if not os.path.exists(db_path):
+    # First run on a new machine: start from the copy of the database baked into the exe
+    shutil.copyfile(os.path.join(bundle_dir, 'oil_data.sqlite'), db_path)
 
-template_dir = os.path.join(script_dir, 'templates')
+template_dir = os.path.join(bundle_dir, 'templates')
 app.template_folder = template_dir
 
 def no_cache(response):
@@ -1128,14 +1136,17 @@ def limit_close():
     return jsonify({"message": "Limit close set"}), 200
 
 
-def run_server():
-    serve(app, host='0.0.0.0', port=8080)
+def port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
 
 if __name__ == '__main__':
-    server_thread = Thread(target=run_server)
-    server_thread.daemon = True
-    server_thread.start()
-    
-    app.run()
-    #FlaskUI(app=app, server="flask").run()
+    url = f'http://127.0.0.1:{PORT}'
+    if port_in_use(PORT):
+        # Already running from an earlier launch, just bring the page back up
+        webbrowser.open(url)
+    else:
+        print(f'Oil app running at {url} - close this window to quit')
+        Timer(1, webbrowser.open, args=[url]).start()
+        serve(app, host='127.0.0.1', port=PORT)
 
