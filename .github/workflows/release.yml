@@ -25,11 +25,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m PyInstaller --noconfirm oilApp.spec
 
-      - name: Check the exe runs from an empty folder
+      - name: Package OilApp.zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\oilApp.exe -DestinationPath dist\OilApp.zip
+
+      - name: Check the exe runs after extracting the zip to an empty folder
         shell: pwsh
         run: |
-          $dir = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\fresh"
-          Copy-Item dist\oilApp.exe $dir
+          $dir = "$env:RUNNER_TEMP\fresh"
+          Expand-Archive dist\OilApp.zip -DestinationPath $dir
           Start-Process -FilePath "$dir\oilApp.exe" -WorkingDirectory $dir
           try {
             $up = $false
@@ -42,6 +46,25 @@ jobs:
             $rows = Invoke-RestMethod http://127.0.0.1:8080/data -Method Post -ContentType 'application/json' -Body '{"date":"2000-01-10"}'
             if ($rows.Count -lt 1 -or -not $rows[0].CloseDate) { throw "/data returned: $($rows | ConvertTo-Json -Compress)" }
             Write-Host "OK: home page served, database created, /data returned $($rows.Count) rows"
+          } finally {
+            Get-Process oilApp -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
+
+      - name: Check the exe refuses to run from inside the zip (Windows temp folder)
+        shell: pwsh
+        run: |
+          # Mimics double-clicking the exe in Explorer's zip view, which runs it from %TEMP%\Temp1_<zip name>
+          $dir = New-Item -ItemType Directory -Path "$env:TEMP\Temp1_OilApp.zip" -Force
+          Copy-Item dist\oilApp.exe $dir
+          Start-Process -FilePath "$dir\oilApp.exe" -WorkingDirectory $dir
+          try {
+            Start-Sleep -Seconds 20
+            $served = $true
+            try { Invoke-WebRequest http://127.0.0.1:8080/ -UseBasicParsing -TimeoutSec 5 | Out-Null } catch { $served = $false }
+            if ($served) { throw 'oilApp.exe started a server from the temp folder instead of refusing' }
+            if (Test-Path "$dir\oil_data.sqlite") { throw 'oilApp.exe created a database in the temp folder' }
+            if (-not (Get-Process oilApp -ErrorAction SilentlyContinue)) { throw 'oilApp.exe exited instead of waiting on the extract-first message' }
+            Write-Host 'OK: refused to run from the temp folder and is waiting on the message'
           } finally {
             Get-Process oilApp -ErrorAction SilentlyContinue | Stop-Process -Force
           }
@@ -67,11 +90,11 @@ jobs:
           (Get-Content .github/release-notes.md -Raw).Replace('{{REPO}}', $env:GITHUB_REPOSITORY).Replace('{{TAG}}', $tag) | Set-Content $notesFile
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag dist/oilApp.exe --title "Oil App $tag" --notes-file $notesFile
+            gh release create $tag dist/OilApp.zip --title "Oil App $tag" --notes-file $notesFile
             if ($LASTEXITCODE -ne 0) { exit 1 }
           } else {
-            # Release was created on github.com along with the tag: attach the exe, and fill in notes if left blank
-            gh release upload $tag dist/oilApp.exe --clobber
+            # Release was created on github.com along with the tag: attach the zip, and fill in notes if left blank
+            gh release upload $tag dist/OilApp.zip --clobber
             if ($LASTEXITCODE -ne 0) { exit 1 }
             if (-not (gh release view $tag --json body -q .body)) {
               gh release edit $tag --notes-file $notesFile

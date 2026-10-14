@@ -9,6 +9,7 @@ import sys
 import traceback
 import shutil
 import socket
+import tempfile
 import webbrowser
 import numpy as np
 import math
@@ -28,6 +29,13 @@ if getattr(sys, 'frozen', False):
     # but the database has to live next to the exe so changes persist between runs
     bundle_dir = sys._MEIPASS
     app_dir = os.path.dirname(sys.executable)
+    # Double-clicking the exe inside the zip runs it from a throwaway temp copy, and the database would vanish with it
+    temp_root = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
+    if os.path.normcase(os.path.realpath(app_dir)).startswith(temp_root + os.sep):
+        input('Oil App is running from inside the zip file, so nothing you do would be saved.\n'
+              'Close this window, right-click OilApp.zip, choose "Extract All...", and run oilApp.exe '
+              'from the extracted folder.\n\nPress Enter to close.')
+        sys.exit(1)
 else:
     bundle_dir = app_dir = os.path.dirname(os.path.abspath(__file__))
 
