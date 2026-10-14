@@ -83,14 +83,16 @@ python main.py
 
 **Build the exe locally** on Windows: run `build.bat`. The result is `dist\oilApp.exe`.
 
-**Publish a release:** push a tag starting with `v`.
+**CI:** on every push, the `Build and release` GitHub Actions workflow builds `oilApp.exe` on Windows and checks that it starts from an empty folder and serves data. The exe is attached to the workflow run as an artifact (kept 14 days) so you can test it before releasing.
+
+**Publish a release:** create a tag starting with `v`, either from the command line:
 
 ```
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-The `Release` GitHub Actions workflow builds `oilApp.exe` on Windows, checks that it starts from an empty folder and serves the app, then creates a GitHub release with the exe attached. The release links in this README (`releases/latest`) then point at the new version automatically.
+or on GitHub under **Releases → Draft a new release**: type the new tag (e.g. `v1.0.1`), pick the branch, and publish. The workflow then builds the exe and attaches it to the release (a few minutes). If the release description is left blank, it fills in the standard download instructions from `.github/release-notes.md`. The `releases/latest` links in this README point at the newest release automatically.
 
 **How the exe finds its files:** templates, static files, and a starter copy of `oil_data.sqlite` are bundled into the exe (see `oilApp.spec`). On launch, if there's no `oil_data.sqlite` next to the exe, the starter copy is copied there. After that the copy next to the exe is used and never overwritten. The starter database is whatever `oil_data.sqlite` is committed at the tagged commit, so reset it before tagging if you've been testing with it.
 

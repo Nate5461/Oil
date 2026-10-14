@@ -1,14 +1,17 @@
-name: Release
+name: Build and release
 
+# Every push builds oilApp.exe on Windows and checks it runs.
+# Pushing a v* tag (or creating a release with a new v* tag on GitHub) also publishes it as a release.
 on:
   push:
+    branches: ['**']
     tags: ['v*']
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -43,11 +46,35 @@ jobs:
             Get-Process oilApp -ErrorAction SilentlyContinue | Stop-Process -Force
           }
 
+      - name: Upload exe for testing
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: oilApp
+          path: dist/oilApp.exe
+          retention-days: 14
+
       - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notes = (Get-Content .github/release-notes.md -Raw).Replace('{{REPO}}', $env:GITHUB_REPOSITORY).Replace('{{TAG}}', $env:GITHUB_REF_NAME)
-          Set-Content -Path "$env:RUNNER_TEMP\notes.md" -Value $notes
-          gh release create $env:GITHUB_REF_NAME dist/oilApp.exe --title "Oil App $env:GITHUB_REF_NAME" --notes-file "$env:RUNNER_TEMP\notes.md"
+          # Exit codes are checked by hand: "release view" failing just means the release doesn't exist yet
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = $env:GITHUB_REF_NAME
+          $notesFile = "$env:RUNNER_TEMP\notes.md"
+          (Get-Content .github/release-notes.md -Raw).Replace('{{REPO}}', $env:GITHUB_REPOSITORY).Replace('{{TAG}}', $tag) | Set-Content $notesFile
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag dist/oilApp.exe --title "Oil App $tag" --notes-file $notesFile
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          } else {
+            # Release was created on github.com along with the tag: attach the exe, and fill in notes if left blank
+            gh release upload $tag dist/oilApp.exe --clobber
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            if (-not (gh release view $tag --json body -q .body)) {
+              gh release edit $tag --notes-file $notesFile
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+            }
+          }
